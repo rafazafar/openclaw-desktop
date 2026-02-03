@@ -74,7 +74,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
 
 ## Milestone M2 — Permissions framework
 - [x] T5.1 Permission catalog v1 ✅ 2026-02-04 — Added `@openclaw/policy` package with v1 permission catalog + small vitest to enforce unique ids/frozen catalog.
-- [ ] T5.2 Permissions UI screen
+- [x] T5.2 Permissions UI screen ✅ 2026-02-04 — Added manager `/permissions` API with persisted overrides + desktop Permissions card with toggles/reset.
 - [ ] T5.3 Policy enforcement hook (confirm-before-send baseline)
 - [ ] T5.4 Audit log JSONL
 

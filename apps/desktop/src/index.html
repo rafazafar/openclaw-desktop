@@ -110,6 +110,51 @@
         border-radius: 10px;
         overflow: auto;
       }
+
+      .perm-item {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 10px 8px;
+        border-top: 1px solid var(--border);
+      }
+
+      .perm-item:first-child {
+        border-top: none;
+      }
+
+      .perm-meta {
+        flex: 1;
+      }
+
+      .badge {
+        display: inline-block;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        background: #fafafa;
+        margin-left: 6px;
+      }
+
+      .badge.high {
+        border-color: #f2c2c2;
+        background: #fff5f5;
+        color: #b42318;
+      }
+
+      .badge.medium {
+        border-color: #f0d59b;
+        background: #fffbeb;
+        color: #b54708;
+      }
+
+      .badge.low {
+        border-color: #b7e3c7;
+        background: #f0fdf4;
+        color: #027a48;
+      }
     </style>
   </head>
 
@@ -167,6 +212,20 @@
           </div>
         </div>
         <pre id="logs" aria-label="Recent gateway logs"></pre>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div>
+            <div><strong>Permissions</strong></div>
+            <div class="sub" id="permissions-hint">Control what OpenClaw is allowed to do.</div>
+          </div>
+          <div class="right">
+            <button id="permissions-refresh" style="background: #fff; color: #111">Refresh</button>
+            <button id="permissions-reset" style="background: #fff; color: #111">Reset defaults</button>
+          </div>
+        </div>
+        <div id="permissions" aria-label="Permissions list" style="margin-top: 10px"></div>
       </div>
 
       <div class="card">

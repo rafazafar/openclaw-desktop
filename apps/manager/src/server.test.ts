@@ -19,6 +19,21 @@ function listen(server: ReturnType<typeof createManagerServer>): Promise<{ url: 
   });
 }
 
+function createStateStoreStub(overrides?: Partial<any>) {
+  return {
+    getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
+    writeState: vi.fn(async () => undefined),
+    getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
+    setTelegramToken: vi.fn(async () => undefined),
+    setTelegramError: vi.fn(async () => undefined),
+    clearTelegram: vi.fn(async () => undefined),
+    getPermissions: vi.fn(async () => ({ catalog: [], enabled: {} })),
+    setPermission: vi.fn(async () => undefined),
+    resetPermissions: vi.fn(async () => undefined),
+    ...(overrides ?? {})
+  };
+}
+
 describe('manager server', () => {
   it('requires auth token', async () => {
     const server = createManagerServer({ authToken: 'secret' });
@@ -38,14 +53,7 @@ describe('manager server', () => {
       restart: vi.fn(async () => ({ status: 'running' as const }))
     };
 
-    const stateStore = {
-      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
-      writeState: vi.fn(async () => undefined),
-      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
-      setTelegramToken: vi.fn(async () => undefined),
-      setTelegramError: vi.fn(async () => undefined),
-      clearTelegram: vi.fn(async () => undefined)
-    };
+    const stateStore = createStateStoreStub();
 
     const server = createManagerServer({ authToken: 'secret', gateway, stateStore });
     const { url, close } = await listen(server);
@@ -98,14 +106,9 @@ describe('manager server', () => {
       })
     );
 
-    const stateStore = {
-      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
-      writeState: vi.fn(async () => undefined),
-      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: true })),
-      setTelegramToken: vi.fn(async () => undefined),
-      setTelegramError: vi.fn(async () => undefined),
-      clearTelegram: vi.fn(async () => undefined)
-    };
+    const stateStore = createStateStoreStub({
+      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: true }))
+    });
 
     const server = createManagerServer({ authToken: 'secret', stateStore, telegramFetch });
     const { url, close } = await listen(server);
@@ -126,14 +129,7 @@ describe('manager server', () => {
   });
 
   it('POST /integrations/telegram/connect rejects invalid token format', async () => {
-    const stateStore = {
-      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
-      writeState: vi.fn(async () => undefined),
-      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
-      setTelegramToken: vi.fn(async () => undefined),
-      setTelegramError: vi.fn(async () => undefined),
-      clearTelegram: vi.fn(async () => undefined)
-    };
+    const stateStore = createStateStoreStub();
 
     const server = createManagerServer({ authToken: 'secret', stateStore });
     const { url, close } = await listen(server);
@@ -153,14 +149,9 @@ describe('manager server', () => {
   });
 
   it('POST /integrations/telegram/disconnect clears telegram state', async () => {
-    const stateStore = {
-      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: { token: '123:ABC' } } })),
-      writeState: vi.fn(async () => undefined),
-      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
-      setTelegramToken: vi.fn(async () => undefined),
-      setTelegramError: vi.fn(async () => undefined),
-      clearTelegram: vi.fn(async () => undefined)
-    };
+    const stateStore = createStateStoreStub({
+      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: { token: '123:ABC' } } }))
+    });
 
     const server = createManagerServer({ authToken: 'secret', stateStore });
     const { url, close } = await listen(server);
@@ -211,14 +202,7 @@ describe('manager server', () => {
       restart: vi.fn(async () => ({ status: 'running' as const }))
     };
 
-    const stateStore = {
-      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
-      writeState: vi.fn(async () => undefined),
-      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
-      setTelegramToken: vi.fn(async () => undefined),
-      setTelegramError: vi.fn(async () => undefined),
-      clearTelegram: vi.fn(async () => undefined)
-    };
+    const stateStore = createStateStoreStub();
 
     const server = createManagerServer({
       authToken: 'secret',
@@ -239,6 +223,61 @@ describe('manager server', () => {
     expect(body.summary.overall).toBe('warn');
     expect(Array.isArray(body.checks)).toBe(true);
     expect(body.checks.some((c: any) => c.id === 'gateway.status')).toBe(true);
+
+    await close();
+  });
+
+  it('GET /permissions returns enabled map', async () => {
+    const stateStore = createStateStoreStub({
+      getPermissions: vi.fn(async () => ({
+        catalog: [
+          {
+            id: 'gateway.control',
+            title: 'Control OpenClaw Gateway',
+            description: '...',
+            group: 'gateway',
+            risk: 'medium',
+            defaultEnabled: true
+          }
+        ],
+        enabled: { 'gateway.control': true }
+      }))
+    });
+
+    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/permissions`, {
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.permissions.enabled['gateway.control']).toBe(true);
+
+    await close();
+  });
+
+  it('POST /permissions/set validates and writes permission override', async () => {
+    const setPermission = vi.fn(async () => undefined);
+    const getPermissions = vi.fn(async () => ({
+      catalog: [],
+      enabled: { 'gateway.control': false }
+    }));
+
+    const stateStore = createStateStoreStub({ setPermission, getPermissions });
+    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/permissions/set`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'gateway.control', enabled: false })
+    });
+
+    expect(res.status).toBe(200);
+    expect(setPermission).toHaveBeenCalledTimes(1);
 
     await close();
   });

@@ -4,6 +4,7 @@ import { createGatewayController, type GatewayController, type GatewayState } fr
 import { resolveGatewayLogFilePath, tailFileLines } from './logs.js';
 import { runDiagnostics, type DiagnosticsRunResult } from './diagnostics.js';
 import { createStateStore, type IntegrationConnection, type StateStore } from './state/store.js';
+import { PERMISSION_CATALOG_V1, type PermissionId } from '@openclaw/policy';
 
 export type ManagerStatusResponse = {
   ok: true;
@@ -44,6 +45,28 @@ export type ManagerLogsRecentResponse = {
 };
 
 export type ManagerDiagnosticsRunResponse = DiagnosticsRunResult;
+
+export type ManagerPermissionsGetResponse = {
+  ok: true;
+  permissions: {
+    catalog: {
+      id: PermissionId;
+      title: string;
+      description: string;
+      group: string;
+      risk: string;
+      defaultEnabled: boolean;
+    }[];
+    enabled: Record<PermissionId, boolean>;
+  };
+};
+
+export type ManagerPermissionsSetResponse = {
+  ok: true;
+  permissions: {
+    enabled: Record<PermissionId, boolean>;
+  };
+};
 
 export type ManagerServerOptions = {
   /** Token required in `x-openclaw-token` header. */
@@ -239,6 +262,67 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
           stateStore,
           logFileResolver: resolver
         });
+        return json(res, 200, body);
+      }
+
+      if (method === 'GET' && url.pathname === '/permissions') {
+        const perms = await stateStore.getPermissions();
+        const body: ManagerPermissionsGetResponse = {
+          ok: true,
+          permissions: {
+            catalog: perms.catalog.map((p) => ({
+              id: p.id,
+              title: p.title,
+              description: p.description,
+              group: p.group,
+              risk: p.risk,
+              defaultEnabled: p.defaultEnabled
+            })),
+            enabled: { ...perms.enabled }
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'POST' && url.pathname === '/permissions/set') {
+        let parsed: any = null;
+        try {
+          parsed = (await readJson(req)) as any;
+        } catch (err) {
+          if ((err as Error).message === 'invalid_json') {
+            return json(res, 400, { ok: false, error: 'invalid_json' });
+          }
+          throw err;
+        }
+
+        const id = String(parsed?.id ?? '').trim();
+        const enabled = parsed?.enabled;
+
+        const isKnown = PERMISSION_CATALOG_V1.some((p) => p.id === id);
+        if (!isKnown) return json(res, 400, { ok: false, error: 'unknown_permission' });
+        if (typeof enabled !== 'boolean') return json(res, 400, { ok: false, error: 'invalid_enabled' });
+
+        await stateStore.setPermission(id as PermissionId, enabled);
+        const next = await stateStore.getPermissions();
+
+        const body: ManagerPermissionsSetResponse = {
+          ok: true,
+          permissions: {
+            enabled: { ...next.enabled }
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'POST' && url.pathname === '/permissions/reset') {
+        await stateStore.resetPermissions();
+        const next = await stateStore.getPermissions();
+        const body: ManagerPermissionsSetResponse = {
+          ok: true,
+          permissions: {
+            enabled: { ...next.enabled }
+          }
+        };
         return json(res, 200, body);
       }
 

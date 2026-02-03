@@ -15,6 +15,11 @@ const logsHintEl = document.getElementById('logs-hint');
 const logsRefreshBtn = document.getElementById('logs-refresh');
 const logsCopyBtn = document.getElementById('logs-copy');
 
+const permissionsEl = document.getElementById('permissions');
+const permissionsHintEl = document.getElementById('permissions-hint');
+const permissionsRefreshBtn = document.getElementById('permissions-refresh');
+const permissionsResetBtn = document.getElementById('permissions-reset');
+
 /** @type {any | null} */
 let lastStatus = null;
 /** @type {ReturnType<typeof setInterval> | null} */
@@ -23,6 +28,9 @@ let pollTimer = null;
 let logsTimer = null;
 
 let lastLogsText = '';
+
+/** @type {any | null} */
+let lastPermissions = null;
 
 function setHint(text) {
   hintEl.textContent = text;
@@ -236,6 +244,155 @@ async function disconnectTelegram() {
   }
 }
 
+function groupTitle(group) {
+  if (!group) return 'Other';
+  return String(group)
+    .split(/[_-]/g)
+    .map((s) => s.slice(0, 1).toUpperCase() + s.slice(1))
+    .join(' ');
+}
+
+function riskClass(risk) {
+  const r = String(risk ?? '').toLowerCase();
+  if (r === 'high') return 'high';
+  if (r === 'medium') return 'medium';
+  return 'low';
+}
+
+function renderPermissions(perms) {
+  permissionsEl.textContent = '';
+
+  if (!perms?.catalog || !perms?.enabled) {
+    permissionsHintEl.textContent = 'No permission data yet.';
+    return;
+  }
+
+  const enabled = perms.enabled;
+  /** @type {Record<string, any[]>} */
+  const byGroup = {};
+  for (const p of perms.catalog) {
+    const g = p.group ?? 'other';
+    byGroup[g] ??= [];
+    byGroup[g].push(p);
+  }
+
+  const groups = Object.keys(byGroup).sort();
+  for (const g of groups) {
+    const title = document.createElement('div');
+    title.style.marginTop = permissionsEl.childElementCount ? '12px' : '0';
+    title.style.fontWeight = '650';
+    title.textContent = groupTitle(g);
+    permissionsEl.appendChild(title);
+
+    for (const p of byGroup[g]) {
+      const row = document.createElement('div');
+      row.className = 'perm-item';
+
+      const toggleWrap = document.createElement('div');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = Boolean(enabled[p.id]);
+      cb.dataset.permissionId = String(p.id);
+      cb.addEventListener('change', async (e) => {
+        const id = e.target?.dataset?.permissionId;
+        const next = Boolean(e.target?.checked);
+        await setPermission(id, next);
+      });
+      toggleWrap.appendChild(cb);
+
+      const meta = document.createElement('div');
+      meta.className = 'perm-meta';
+
+      const top = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = p.title ?? p.id;
+
+      const badge = document.createElement('span');
+      badge.className = `badge ${riskClass(p.risk)}`;
+      badge.textContent = String(p.risk ?? 'low');
+
+      const code = document.createElement('code');
+      code.style.marginLeft = '8px';
+      code.textContent = String(p.id);
+
+      top.appendChild(name);
+      top.appendChild(badge);
+      top.appendChild(code);
+
+      const desc = document.createElement('div');
+      desc.className = 'sub';
+      desc.textContent = p.description ?? '';
+
+      meta.appendChild(top);
+      meta.appendChild(desc);
+
+      row.appendChild(toggleWrap);
+      row.appendChild(meta);
+      permissionsEl.appendChild(row);
+    }
+  }
+
+  permissionsHintEl.textContent = 'Changes apply immediately (local only).';
+}
+
+async function refreshPermissions({ quiet = false } = {}) {
+  if (!quiet) {
+    permissionsRefreshBtn.disabled = true;
+    permissionsResetBtn.disabled = true;
+    permissionsHintEl.textContent = 'Loading permissions…';
+  }
+
+  try {
+    const data = await window.openclaw.permissionsGet();
+    lastPermissions = data?.permissions ?? null;
+    renderPermissions(lastPermissions);
+  } catch (err) {
+    lastPermissions = null;
+    permissionsEl.textContent = '';
+    permissionsHintEl.textContent = `Failed to load permissions: ${String(err?.message ?? err)}`;
+  } finally {
+    permissionsRefreshBtn.disabled = false;
+    permissionsResetBtn.disabled = false;
+  }
+}
+
+async function setPermission(id, enabled) {
+  if (!id) return;
+  permissionsHintEl.textContent = `Saving ${id}…`;
+
+  try {
+    const data = await window.openclaw.permissionSet(id, enabled);
+    if (lastPermissions) {
+      lastPermissions = {
+        ...lastPermissions,
+        enabled: { ...(lastPermissions.enabled ?? {}), ...(data?.permissions?.enabled ?? {}) }
+      };
+    }
+    await refreshPermissions({ quiet: true });
+    permissionsHintEl.textContent = 'Saved.';
+  } catch (err) {
+    permissionsHintEl.textContent = `Save failed: ${String(err?.message ?? err)}`;
+    await refreshPermissions({ quiet: true });
+  }
+}
+
+async function resetPermissions() {
+  permissionsRefreshBtn.disabled = true;
+  permissionsResetBtn.disabled = true;
+  permissionsHintEl.textContent = 'Resetting…';
+
+  try {
+    await window.openclaw.permissionsReset();
+    await refreshPermissions({ quiet: true });
+    permissionsHintEl.textContent = 'Reset to defaults.';
+  } catch (err) {
+    permissionsHintEl.textContent = `Reset failed: ${String(err?.message ?? err)}`;
+  } finally {
+    permissionsRefreshBtn.disabled = false;
+    permissionsResetBtn.disabled = false;
+  }
+}
+
 refreshBtn.addEventListener('click', () => refreshStatus());
 toggleBtn.addEventListener('click', toggleGateway);
 telegramConnectBtn.addEventListener('click', connectTelegram);
@@ -247,9 +404,13 @@ telegramTokenEl.addEventListener('keydown', (e) => {
 logsRefreshBtn.addEventListener('click', () => refreshLogs());
 logsCopyBtn.addEventListener('click', copyLogs);
 
+permissionsRefreshBtn.addEventListener('click', () => refreshPermissions());
+permissionsResetBtn.addEventListener('click', resetPermissions);
+
 // Auto-load once, then poll.
 refreshStatus();
 refreshLogs({ quiet: true });
+refreshPermissions({ quiet: true });
 
 pollTimer = setInterval(() => refreshStatus({ quiet: true }), 2000);
 logsTimer = setInterval(() => refreshLogs({ quiet: true }), 5000);

@@ -31,6 +31,17 @@ contextBridge.exposeInMainWorld('openclaw', {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token })
     }),
-  telegramDisconnect: async () => managerFetch('/integrations/telegram/disconnect', { method: 'POST' }),
-  logsRecent: async (lines = 200) => managerFetch(`/logs/recent?lines=${encodeURIComponent(String(lines))}`)
+  telegramDisconnect: async () =>
+    managerFetch('/integrations/telegram/disconnect', { method: 'POST' }),
+  logsRecent: async (lines = 200) =>
+    managerFetch(`/logs/recent?lines=${encodeURIComponent(String(lines))}`),
+
+  permissionsGet: async () => managerFetch('/permissions'),
+  permissionSet: async (id, enabled) =>
+    managerFetch('/permissions/set', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, enabled })
+    }),
+  permissionsReset: async () => managerFetch('/permissions/reset', { method: 'POST' })
 });

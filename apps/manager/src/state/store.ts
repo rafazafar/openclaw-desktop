@@ -1,6 +1,11 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {
+  PERMISSION_CATALOG_V1,
+  type PermissionDef,
+  type PermissionId
+} from '@openclaw/policy';
 
 async function pathExists(p: string): Promise<boolean> {
   try {
@@ -101,22 +106,41 @@ export type AppStateV1 = {
       lastError?: string;
     };
   };
+  /**
+   * Per-permission enablement map.
+   *
+   * For MVP, we store a full materialized map. Unknown keys are ignored.
+   */
+  permissions?: Partial<Record<PermissionId, boolean>>;
 };
 
 const DEFAULT_STATE: AppStateV1 = {
   schemaVersion: 1,
   integrations: {
     telegram: {}
-  }
+  },
+  permissions: undefined
+};
+
+export type PermissionsState = {
+  catalog: ReadonlyArray<PermissionDef>;
+  enabled: Readonly<Record<PermissionId, boolean>>;
 };
 
 export type StateStore = {
   getState(): Promise<AppStateV1>;
   writeState(next: AppStateV1): Promise<void>;
+
+  // Integrations
   getTelegramConnection(): Promise<IntegrationConnection>;
   setTelegramToken(token: string): Promise<void>;
   setTelegramError(message: string): Promise<void>;
   clearTelegram(): Promise<void>;
+
+  // Permissions
+  getPermissions(): Promise<PermissionsState>;
+  setPermission(id: PermissionId, enabled: boolean): Promise<void>;
+  resetPermissions(): Promise<void>;
 };
 
 function resolveDataDir(): string {
@@ -148,6 +172,22 @@ function isAppStateV1(value: unknown): value is AppStateV1 {
     !!v.integrations &&
     typeof (v.integrations as any).telegram === 'object'
   );
+}
+
+function getDefaultPermissions(): Record<PermissionId, boolean> {
+  return Object.fromEntries(
+    PERMISSION_CATALOG_V1.map((p) => [p.id, Boolean(p.defaultEnabled)])
+  ) as Record<PermissionId, boolean>;
+}
+
+function materializePermissions(state: AppStateV1): Record<PermissionId, boolean> {
+  const base = getDefaultPermissions();
+  const overrides = state.permissions ?? {};
+  for (const p of PERMISSION_CATALOG_V1) {
+    const v = overrides[p.id];
+    if (typeof v === 'boolean') base[p.id] = v;
+  }
+  return base;
 }
 
 export function createStateStore(opts?: { dataDir?: string }): StateStore {
@@ -269,12 +309,41 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     await writeGeneratedOpenClawConfig(next);
   }
 
+  async function getPermissions(): Promise<PermissionsState> {
+    const state = await getState();
+    return {
+      catalog: PERMISSION_CATALOG_V1,
+      enabled: materializePermissions(state)
+    };
+  }
+
+  async function setPermission(id: PermissionId, enabled: boolean): Promise<void> {
+    const state = await getState();
+    const next: AppStateV1 = {
+      ...state,
+      permissions: {
+        ...(state.permissions ?? {}),
+        [id]: enabled
+      }
+    };
+    await writeState(next);
+  }
+
+  async function resetPermissions(): Promise<void> {
+    const state = await getState();
+    const next: AppStateV1 = { ...state, permissions: undefined };
+    await writeState(next);
+  }
+
   return {
     getState,
     writeState,
     getTelegramConnection,
     setTelegramToken,
     setTelegramError,
-    clearTelegram
+    clearTelegram,
+    getPermissions,
+    setPermission,
+    resetPermissions
   };
 }
