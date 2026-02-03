@@ -36,7 +36,7 @@ These are optional but useful PRD-adjacent docs to make later implementation smo
 ### Product / UX
 - ✅ ONBOARDING_COPY.md (2026-02-04) — exact user-facing text for flows (first run, connect Gmail, permissions warnings)
 - ✅ UX_EDGE_CASES.md (2026-02-04) — edge cases + error states (invalid token, revoked OAuth, network blocked)
-- ⬜ ACCESSIBILITY.md — basic a11y requirements
+- ✅ ACCESSIBILITY.md (2026-02-04) — basic a11y requirements
 
 ### Engineering
 - ⬜ CONFIG_GENERATION.md — how manager generates OpenClaw config, ownership strategy, migration approach
@@ -55,7 +55,7 @@ These are optional but useful PRD-adjacent docs to make later implementation smo
    - CONFIG_GENERATION.md
    - POLICY_ENFORCEMENT.md
    - SUPPORT_BUNDLE_SPEC.md
-   - ACCESSIBILITY.md
+   - UPDATE_STRATEGY.md
 2) Update this file after each doc.
 3) Commit directly to `master` and push.
 
