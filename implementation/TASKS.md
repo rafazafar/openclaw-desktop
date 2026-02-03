@@ -38,8 +38,8 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - Implement start/stop/restart in manager.
   - Idempotency rules per PRD.
 
-- [ ] **T1.2 Status polling + transient states**
-  - Desktop polls `/status` and shows Running/Stopped/Starting/Stopping.
+- [x] **T1.2 Status polling + transient states** ✅ 2026-02-04 — Desktop now auto-polls `/status` every 2s and shows running/stopped/starting/stopping states.
+  - Gateway control button calls manager start/stop and reflects transient states while actions are in-flight.
 
 ### P0-INTEGRATIONS: TELEGRAM
 - [ ] **T2.1 Telegram integration: data model + storage**

@@ -21,5 +21,8 @@ async function managerFetch(path, init = {}) {
 }
 
 contextBridge.exposeInMainWorld('openclaw', {
-  status: async () => managerFetch('/status')
+  status: async () => managerFetch('/status'),
+  gatewayStart: async () => managerFetch('/gateway/start', { method: 'POST' }),
+  gatewayStop: async () => managerFetch('/gateway/stop', { method: 'POST' }),
+  gatewayRestart: async () => managerFetch('/gateway/restart', { method: 'POST' })
 });
