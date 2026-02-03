@@ -39,7 +39,7 @@ These are optional but useful PRD-adjacent docs to make later implementation smo
 - ✅ ACCESSIBILITY.md (2026-02-04) — basic a11y requirements
 
 ### Engineering
-- ⬜ CONFIG_GENERATION.md — how manager generates OpenClaw config, ownership strategy, migration approach
+- ✅ CONFIG_GENERATION.md (2026-02-04) — how manager generates OpenClaw config, ownership strategy, migration approach
 - ⬜ POLICY_ENFORCEMENT.md — how “hard” policies are enforced (confirm-before-send, allowlists)
 - ⬜ UPDATE_STRATEGY.md — detailed update mechanisms, signing, rollback
 - ⬜ SUPPORT_BUNDLE_SPEC.md — exactly what diagnostics include + redaction rules
@@ -52,7 +52,6 @@ These are optional but useful PRD-adjacent docs to make later implementation smo
 
 ## Next task (picked up by cron)
 1) Create missing backlog docs in sensible order:
-   - CONFIG_GENERATION.md
    - POLICY_ENFORCEMENT.md
    - SUPPORT_BUNDLE_SPEC.md
    - UPDATE_STRATEGY.md
