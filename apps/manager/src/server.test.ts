@@ -36,6 +36,15 @@ function createStateStoreStub(overrides?: Partial<any>) {
   };
 }
 
+function createAuditLogStub(overrides?: Partial<any>) {
+  return {
+    filePath: () => 'audit.jsonl',
+    append: vi.fn(async () => undefined),
+    readRecent: vi.fn(async () => ({ lines: [], events: [], truncated: false })),
+    ...(overrides ?? {})
+  };
+}
+
 describe('manager server', () => {
   it('requires auth token', async () => {
     const server = createManagerServer({ authToken: 'secret' });
@@ -84,7 +93,8 @@ describe('manager server', () => {
       restart: vi.fn(async () => ({ status: 'running' as const }))
     };
 
-    const server = createManagerServer({ authToken: 'secret', gateway });
+    const auditLog = createAuditLogStub();
+    const server = createManagerServer({ authToken: 'secret', gateway, auditLog });
     const { url, close } = await listen(server);
 
     const res = await fetch(`${url}/gateway/start`, {
@@ -112,7 +122,8 @@ describe('manager server', () => {
       getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: true }))
     });
 
-    const server = createManagerServer({ authToken: 'secret', stateStore, telegramFetch });
+    const auditLog = createAuditLogStub();
+    const server = createManagerServer({ authToken: 'secret', stateStore, telegramFetch, auditLog });
     const { url, close } = await listen(server);
 
     const res = await fetch(`${url}/integrations/telegram/connect`, {
@@ -133,7 +144,8 @@ describe('manager server', () => {
   it('POST /integrations/telegram/connect rejects invalid token format', async () => {
     const stateStore = createStateStoreStub();
 
-    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const auditLog = createAuditLogStub();
+    const server = createManagerServer({ authToken: 'secret', stateStore, auditLog });
     const { url, close } = await listen(server);
 
     const res = await fetch(`${url}/integrations/telegram/connect`, {
@@ -155,7 +167,8 @@ describe('manager server', () => {
       getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: { token: '123:ABC' } } }))
     });
 
-    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const auditLog = createAuditLogStub();
+    const server = createManagerServer({ authToken: 'secret', stateStore, auditLog });
     const { url, close } = await listen(server);
 
     const res = await fetch(`${url}/integrations/telegram/disconnect`, {
@@ -206,11 +219,13 @@ describe('manager server', () => {
 
     const stateStore = createStateStoreStub();
 
+    const auditLog = createAuditLogStub();
     const server = createManagerServer({
       authToken: 'secret',
       gateway,
       stateStore,
-      logFileResolver: async () => null
+      logFileResolver: async () => null,
+      auditLog
     });
     const { url, close } = await listen(server);
 
@@ -268,8 +283,9 @@ describe('manager server', () => {
       enabled: { 'gateway.control': false }
     }));
 
+    const auditLog = createAuditLogStub();
     const stateStore = createStateStoreStub({ setPermission, getPermissions });
-    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const server = createManagerServer({ authToken: 'secret', stateStore, auditLog });
     const { url, close } = await listen(server);
 
     const res = await fetch(`${url}/permissions/set`, {
@@ -280,6 +296,39 @@ describe('manager server', () => {
 
     expect(res.status).toBe(200);
     expect(setPermission).toHaveBeenCalledTimes(1);
+    expect(auditLog.append).toHaveBeenCalledWith({
+      type: 'permissions.set',
+      actor: 'desktop-ui',
+      details: { id: 'gateway.control', enabled: false }
+    });
+
+    await close();
+  });
+
+  it('GET /audit/recent returns parsed audit events', async () => {
+    const auditLog = createAuditLogStub({
+      filePath: () => 'C:/tmp/audit.jsonl',
+      readRecent: vi.fn(async () => ({
+        lines: [],
+        truncated: false,
+        events: [
+          { ts: '2026-02-04T00:00:00.000Z', type: 'permissions.set', actor: 'desktop-ui', details: { id: 'x', enabled: true } }
+        ]
+      }))
+    });
+
+    const server = createManagerServer({ authToken: 'secret', auditLog });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/audit/recent?lines=10`, {
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.audit.file).toBe('C:/tmp/audit.jsonl');
+    expect(body.audit.events.length).toBe(1);
 
     await close();
   });
@@ -317,7 +366,8 @@ describe('manager server', () => {
       getConfirmBeforeSendPolicy
     });
 
-    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const auditLog = createAuditLogStub();
+    const server = createManagerServer({ authToken: 'secret', stateStore, auditLog });
     const { url, close } = await listen(server);
 
     const res = await fetch(`${url}/policies/confirm-before-send/set`, {

@@ -76,7 +76,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
 - [x] T5.1 Permission catalog v1 ✅ 2026-02-04 — Added `@openclaw/policy` package with v1 permission catalog + small vitest to enforce unique ids/frozen catalog.
 - [x] T5.2 Permissions UI screen ✅ 2026-02-04 — Added manager `/permissions` API with persisted overrides + desktop Permissions card with toggles/reset.
 - [x] T5.3 Policy enforcement hook (confirm-before-send baseline) ✅ 2026-02-04 — Added manager policy endpoints + desktop policy toggle; generated config now includes permissions + confirmBeforeSend hooks.
-- [ ] T5.4 Audit log JSONL
+- [x] T5.4 Audit log JSONL ✅ 2026-02-04 — Added JSONL audit log (app data) with best-effort durability; manager now records sensitive actions and exposes `GET /audit/recent`.
 
 ---
 

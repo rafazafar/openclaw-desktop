@@ -3,6 +3,7 @@ import { URL } from 'node:url';
 import { createGatewayController, type GatewayController, type GatewayState } from './gateway.js';
 import { resolveGatewayLogFilePath, tailFileLines } from './logs.js';
 import { runDiagnostics, type DiagnosticsRunResult } from './diagnostics.js';
+import { createAuditLog, type AuditLog } from './audit.js';
 import {
   createStateStore,
   type ConfirmBeforeSendPolicyState,
@@ -51,6 +52,15 @@ export type ManagerLogsRecentResponse = {
 
 export type ManagerDiagnosticsRunResponse = DiagnosticsRunResult;
 
+export type ManagerAuditRecentResponse = {
+  ok: true;
+  audit: {
+    file: string;
+    events: unknown[];
+    truncated: boolean;
+  };
+};
+
 export type ManagerPermissionsGetResponse = {
   ok: true;
   permissions: {
@@ -98,6 +108,8 @@ export type ManagerServerOptions = {
   telegramFetch?: typeof fetch;
   /** Override for tests; resolves the gateway log file path. */
   logFileResolver?: () => Promise<string | null>;
+  /** Override for tests; defaults to JSONL audit log in app data dir. */
+  auditLog?: AuditLog;
 };
 
 function json(res: http.ServerResponse, statusCode: number, body: unknown): void {
@@ -150,6 +162,15 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
   const gateway = opts.gateway ?? createGatewayController();
   const stateStore = opts.stateStore ?? createStateStore();
   const telegramFetch = opts.telegramFetch ?? fetch;
+  const auditLog = opts.auditLog ?? createAuditLog();
+
+  async function safeAudit(event: Parameters<AuditLog['append']>[0]): Promise<void> {
+    try {
+      await auditLog.append(event);
+    } catch {
+      // Best-effort only; do not fail requests due to audit write issues.
+    }
+  }
 
   return http.createServer((req, res) => {
     void (async () => {
@@ -172,25 +193,31 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
       }
 
       if (method === 'POST' && url.pathname === '/gateway/start') {
+        const next = await gateway.start();
+        await safeAudit({ type: 'gateway.start', actor: 'desktop-ui', details: { status: next.status } });
         const body: ManagerGatewayActionResponse = {
           ok: true,
-          gateway: await gateway.start()
+          gateway: next
         };
         return json(res, 200, body);
       }
 
       if (method === 'POST' && url.pathname === '/gateway/stop') {
+        const next = await gateway.stop();
+        await safeAudit({ type: 'gateway.stop', actor: 'desktop-ui', details: { status: next.status } });
         const body: ManagerGatewayActionResponse = {
           ok: true,
-          gateway: await gateway.stop()
+          gateway: next
         };
         return json(res, 200, body);
       }
 
       if (method === 'POST' && url.pathname === '/gateway/restart') {
+        const next = await gateway.restart();
+        await safeAudit({ type: 'gateway.restart', actor: 'desktop-ui', details: { status: next.status } });
         const body: ManagerGatewayActionResponse = {
           ok: true,
-          gateway: await gateway.restart()
+          gateway: next
         };
         return json(res, 200, body);
       }
@@ -209,16 +236,31 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
 
         if (!token || !looksLikeTelegramToken(token)) {
           await stateStore.setTelegramError('invalid_token_format');
+          await safeAudit({
+            type: 'integrations.telegram.connect_failed',
+            actor: 'desktop-ui',
+            details: { error: 'invalid_token_format' }
+          });
           return json(res, 400, { ok: false, error: 'invalid_token' });
         }
 
         const validated = await validateTelegramToken(telegramFetch, token);
         if (!validated.ok) {
           await stateStore.setTelegramError(validated.error);
+          await safeAudit({
+            type: 'integrations.telegram.connect_failed',
+            actor: 'desktop-ui',
+            details: { error: validated.error }
+          });
           return json(res, 400, { ok: false, error: 'telegram_validation_failed' });
         }
 
         await stateStore.setTelegramToken(token);
+        await safeAudit({
+          type: 'integrations.telegram.connect',
+          actor: 'desktop-ui',
+          details: { accountLabel: validated.accountLabel }
+        });
         const body: ManagerTelegramConnectResponse = {
           ok: true,
           integrations: {
@@ -230,6 +272,7 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
 
       if (method === 'POST' && url.pathname === '/integrations/telegram/disconnect') {
         await stateStore.clearTelegram();
+        await safeAudit({ type: 'integrations.telegram.disconnect', actor: 'desktop-ui' });
         const body: ManagerTelegramDisconnectResponse = {
           ok: true,
           integrations: {
@@ -281,6 +324,7 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
           stateStore,
           logFileResolver: resolver
         });
+        await safeAudit({ type: 'diagnostics.run', actor: 'desktop-ui', details: { overall: body.summary.overall } });
         return json(res, 200, body);
       }
 
@@ -322,6 +366,7 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
         if (typeof enabled !== 'boolean') return json(res, 400, { ok: false, error: 'invalid_enabled' });
 
         await stateStore.setPermission(id as PermissionId, enabled);
+        await safeAudit({ type: 'permissions.set', actor: 'desktop-ui', details: { id, enabled } });
         const next = await stateStore.getPermissions();
 
         const body: ManagerPermissionsSetResponse = {
@@ -335,6 +380,7 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
 
       if (method === 'POST' && url.pathname === '/permissions/reset') {
         await stateStore.resetPermissions();
+        await safeAudit({ type: 'permissions.reset', actor: 'desktop-ui' });
         const next = await stateStore.getPermissions();
         const body: ManagerPermissionsSetResponse = {
           ok: true,
@@ -375,12 +421,32 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
         if (typeof enabled !== 'boolean') return json(res, 400, { ok: false, error: 'invalid_enabled' });
 
         await stateStore.setConfirmBeforeSendPolicy(integrationId as 'telegram' | 'gmail', enabled);
+        await safeAudit({
+          type: 'policies.confirmBeforeSend.set',
+          actor: 'desktop-ui',
+          details: { integrationId, enabled }
+        });
         const confirmBeforeSend = await stateStore.getConfirmBeforeSendPolicy();
 
         const body: ManagerPolicyConfirmBeforeSendSetResponse = {
           ok: true,
           policies: {
             confirmBeforeSend
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'GET' && url.pathname === '/audit/recent') {
+        const limitParam = Number(url.searchParams.get('lines') ?? '200');
+        const limit = Number.isFinite(limitParam) ? limitParam : 200;
+        const recent = await auditLog.readRecent(Math.max(0, Math.min(1000, limit)));
+        const body: ManagerAuditRecentResponse = {
+          ok: true,
+          audit: {
+            file: auditLog.filePath(),
+            events: recent.events,
+            truncated: recent.truncated
           }
         };
         return json(res, 200, body);

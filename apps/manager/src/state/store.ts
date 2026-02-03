@@ -1,11 +1,11 @@
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import {
   PERMISSION_CATALOG_V1,
   type PermissionDef,
   type PermissionId
 } from '@openclaw/policy';
+import { resolveDataDir } from './dataDir.js';
 
 async function pathExists(p: string): Promise<boolean> {
   try {
@@ -160,14 +160,7 @@ export type StateStore = {
   setConfirmBeforeSendPolicy(integrationId: 'telegram' | 'gmail', enabled: boolean): Promise<void>;
 };
 
-function resolveDataDir(): string {
-  return (
-    process.env.OPENCLAW_DESKTOP_DATA_DIR ||
-    (process.env.LOCALAPPDATA
-      ? path.join(process.env.LOCALAPPDATA, 'openclaw-desktop')
-      : path.join(os.homedir(), '.openclaw-desktop'))
-  );
-}
+// (moved to state/dataDir.ts)
 
 async function readJsonFile(filePath: string): Promise<unknown | undefined> {
   try {
