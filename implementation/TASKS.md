@@ -34,7 +34,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - Basic window with Home screen and an On/Off button wired to manager API.
 
 ### P0-GATEWAY LIFECYCLE
-- [ ] **T1.1 Gateway process control (start/stop/restart)**
+- [x] **T1.1 Gateway process control (start/stop/restart)** ✅ 2026-02-04 — Manager now proxies `openclaw gateway` via controller; added POST /gateway/start|stop|restart + idempotent no-op when already in target state.
   - Implement start/stop/restart in manager.
   - Idempotency rules per PRD.
 
