@@ -43,5 +43,13 @@ contextBridge.exposeInMainWorld('openclaw', {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, enabled })
     }),
-  permissionsReset: async () => managerFetch('/permissions/reset', { method: 'POST' })
+  permissionsReset: async () => managerFetch('/permissions/reset', { method: 'POST' }),
+
+  policiesGet: async () => managerFetch('/policies'),
+  confirmBeforeSendSet: async (integrationId, enabled) =>
+    managerFetch('/policies/confirm-before-send/set', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ integrationId, enabled })
+    })
 });

@@ -30,6 +30,8 @@ function createStateStoreStub(overrides?: Partial<any>) {
     getPermissions: vi.fn(async () => ({ catalog: [], enabled: {} })),
     setPermission: vi.fn(async () => undefined),
     resetPermissions: vi.fn(async () => undefined),
+    getConfirmBeforeSendPolicy: vi.fn(async () => ({ enabled: { telegram: true, gmail: true } })),
+    setConfirmBeforeSendPolicy: vi.fn(async () => undefined),
     ...(overrides ?? {})
   };
 }
@@ -278,6 +280,54 @@ describe('manager server', () => {
 
     expect(res.status).toBe(200);
     expect(setPermission).toHaveBeenCalledTimes(1);
+
+    await close();
+  });
+
+  it('GET /policies returns confirm-before-send state', async () => {
+    const stateStore = createStateStoreStub({
+      getConfirmBeforeSendPolicy: vi.fn(async () => ({ enabled: { telegram: false, gmail: true } }))
+    });
+
+    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/policies`, {
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      ok: true,
+      policies: {
+        confirmBeforeSend: { enabled: { telegram: false, gmail: true } }
+      }
+    });
+
+    await close();
+  });
+
+  it('POST /policies/confirm-before-send/set updates policy', async () => {
+    const setConfirmBeforeSendPolicy = vi.fn(async () => undefined);
+    const getConfirmBeforeSendPolicy = vi.fn(async () => ({ enabled: { telegram: true, gmail: true } }));
+
+    const stateStore = createStateStoreStub({
+      setConfirmBeforeSendPolicy,
+      getConfirmBeforeSendPolicy
+    });
+
+    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/policies/confirm-before-send/set`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ integrationId: 'telegram', enabled: true })
+    });
+
+    expect(res.status).toBe(200);
+    expect(setConfirmBeforeSendPolicy).toHaveBeenCalledTimes(1);
 
     await close();
   });

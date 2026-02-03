@@ -15,6 +15,8 @@ const logsHintEl = document.getElementById('logs-hint');
 const logsRefreshBtn = document.getElementById('logs-refresh');
 const logsCopyBtn = document.getElementById('logs-copy');
 
+const policiesEl = document.getElementById('policies');
+
 const permissionsEl = document.getElementById('permissions');
 const permissionsHintEl = document.getElementById('permissions-hint');
 const permissionsRefreshBtn = document.getElementById('permissions-refresh');
@@ -31,6 +33,9 @@ let lastLogsText = '';
 
 /** @type {any | null} */
 let lastPermissions = null;
+
+/** @type {any | null} */
+let lastPolicies = null;
 
 function setHint(text) {
   hintEl.textContent = text;
@@ -259,6 +264,71 @@ function riskClass(risk) {
   return 'low';
 }
 
+function renderPolicies(policies) {
+  policiesEl.textContent = '';
+
+  const box = document.createElement('div');
+  box.style.padding = '10px';
+  box.style.border = '1px solid #262626';
+  box.style.borderRadius = '10px';
+  box.style.marginBottom = '10px';
+
+  const title = document.createElement('div');
+  title.style.fontWeight = '650';
+  title.textContent = 'Policies';
+  box.appendChild(title);
+
+  const sub = document.createElement('div');
+  sub.className = 'sub';
+  sub.textContent = 'These settings add extra safety checks even when permissions are enabled.';
+  box.appendChild(sub);
+
+  const enabled = policies?.confirmBeforeSend?.enabled ?? {};
+  const row = document.createElement('div');
+  row.className = 'perm-item';
+
+  const toggleWrap = document.createElement('div');
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = Boolean(enabled.telegram);
+  cb.dataset.integrationId = 'telegram';
+  // If Telegram sending isn't allowed at all, keep this policy toggle read-only.
+  cb.disabled = !Boolean(lastPermissions?.enabled?.['telegram.send']);
+  cb.addEventListener('change', async (e) => {
+    const integrationId = e.target?.dataset?.integrationId;
+    const next = Boolean(e.target?.checked);
+    await setConfirmBeforeSend(integrationId, next);
+  });
+  toggleWrap.appendChild(cb);
+
+  const meta = document.createElement('div');
+  meta.className = 'perm-meta';
+
+  const top = document.createElement('div');
+  const name = document.createElement('strong');
+  name.textContent = 'Require confirmation before sending (Telegram)';
+
+  const badge = document.createElement('span');
+  badge.className = 'badge high';
+  badge.textContent = 'high';
+
+  top.appendChild(name);
+  top.appendChild(badge);
+
+  const desc = document.createElement('div');
+  desc.className = 'sub';
+  desc.textContent = 'When enabled, OpenClaw must request approval before sending Telegram messages.';
+
+  meta.appendChild(top);
+  meta.appendChild(desc);
+
+  row.appendChild(toggleWrap);
+  row.appendChild(meta);
+
+  box.appendChild(row);
+  policiesEl.appendChild(box);
+}
+
 function renderPermissions(perms) {
   permissionsEl.textContent = '';
 
@@ -335,6 +405,39 @@ function renderPermissions(perms) {
   permissionsHintEl.textContent = 'Changes apply immediately (local only).';
 }
 
+async function refreshPolicies({ quiet = false } = {}) {
+  if (!quiet) {
+    permissionsHintEl.textContent = 'Loading policies…';
+  }
+
+  try {
+    const data = await window.openclaw.policiesGet();
+    lastPolicies = data?.policies ?? null;
+    renderPolicies(lastPolicies);
+  } catch (err) {
+    lastPolicies = null;
+    policiesEl.textContent = '';
+    if (!quiet) {
+      permissionsHintEl.textContent = `Failed to load policies: ${String(err?.message ?? err)}`;
+    }
+  }
+}
+
+async function setConfirmBeforeSend(integrationId, enabled) {
+  if (!integrationId) return;
+  permissionsHintEl.textContent = `Saving policy…`;
+
+  try {
+    const data = await window.openclaw.confirmBeforeSendSet(integrationId, enabled);
+    lastPolicies = data?.policies ?? lastPolicies;
+    await refreshPolicies({ quiet: true });
+    permissionsHintEl.textContent = 'Saved.';
+  } catch (err) {
+    permissionsHintEl.textContent = `Save failed: ${String(err?.message ?? err)}`;
+    await refreshPolicies({ quiet: true });
+  }
+}
+
 async function refreshPermissions({ quiet = false } = {}) {
   if (!quiet) {
     permissionsRefreshBtn.disabled = true;
@@ -404,12 +507,16 @@ telegramTokenEl.addEventListener('keydown', (e) => {
 logsRefreshBtn.addEventListener('click', () => refreshLogs());
 logsCopyBtn.addEventListener('click', copyLogs);
 
-permissionsRefreshBtn.addEventListener('click', () => refreshPermissions());
+permissionsRefreshBtn.addEventListener('click', () => {
+  void refreshPolicies();
+  void refreshPermissions();
+});
 permissionsResetBtn.addEventListener('click', resetPermissions);
 
 // Auto-load once, then poll.
 refreshStatus();
 refreshLogs({ quiet: true });
+refreshPolicies({ quiet: true });
 refreshPermissions({ quiet: true });
 
 pollTimer = setInterval(() => refreshStatus({ quiet: true }), 2000);

@@ -3,7 +3,12 @@ import { URL } from 'node:url';
 import { createGatewayController, type GatewayController, type GatewayState } from './gateway.js';
 import { resolveGatewayLogFilePath, tailFileLines } from './logs.js';
 import { runDiagnostics, type DiagnosticsRunResult } from './diagnostics.js';
-import { createStateStore, type IntegrationConnection, type StateStore } from './state/store.js';
+import {
+  createStateStore,
+  type ConfirmBeforeSendPolicyState,
+  type IntegrationConnection,
+  type StateStore
+} from './state/store.js';
 import { PERMISSION_CATALOG_V1, type PermissionId } from '@openclaw/policy';
 
 export type ManagerStatusResponse = {
@@ -65,6 +70,20 @@ export type ManagerPermissionsSetResponse = {
   ok: true;
   permissions: {
     enabled: Record<PermissionId, boolean>;
+  };
+};
+
+export type ManagerPoliciesGetResponse = {
+  ok: true;
+  policies: {
+    confirmBeforeSend: ConfirmBeforeSendPolicyState;
+  };
+};
+
+export type ManagerPolicyConfirmBeforeSendSetResponse = {
+  ok: true;
+  policies: {
+    confirmBeforeSend: ConfirmBeforeSendPolicyState;
   };
 };
 
@@ -321,6 +340,47 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
           ok: true,
           permissions: {
             enabled: { ...next.enabled }
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'GET' && url.pathname === '/policies') {
+        const confirmBeforeSend = await stateStore.getConfirmBeforeSendPolicy();
+        const body: ManagerPoliciesGetResponse = {
+          ok: true,
+          policies: {
+            confirmBeforeSend
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'POST' && url.pathname === '/policies/confirm-before-send/set') {
+        let parsed: any = null;
+        try {
+          parsed = (await readJson(req)) as any;
+        } catch (err) {
+          if ((err as Error).message === 'invalid_json') {
+            return json(res, 400, { ok: false, error: 'invalid_json' });
+          }
+          throw err;
+        }
+
+        const integrationId = String(parsed?.integrationId ?? '').trim();
+        const enabled = parsed?.enabled;
+        if (integrationId !== 'telegram' && integrationId !== 'gmail') {
+          return json(res, 400, { ok: false, error: 'invalid_integration' });
+        }
+        if (typeof enabled !== 'boolean') return json(res, 400, { ok: false, error: 'invalid_enabled' });
+
+        await stateStore.setConfirmBeforeSendPolicy(integrationId as 'telegram' | 'gmail', enabled);
+        const confirmBeforeSend = await stateStore.getConfirmBeforeSendPolicy();
+
+        const body: ManagerPolicyConfirmBeforeSendSetResponse = {
+          ok: true,
+          policies: {
+            confirmBeforeSend
           }
         };
         return json(res, 200, body);

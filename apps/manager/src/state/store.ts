@@ -112,6 +112,15 @@ export type AppStateV1 = {
    * For MVP, we store a full materialized map. Unknown keys are ignored.
    */
   permissions?: Partial<Record<PermissionId, boolean>>;
+
+  /**
+   * Policy overrides.
+   *
+   * Policies are stored as partial overrides; defaults are defined in-code.
+   */
+  policies?: {
+    confirmBeforeSend?: Partial<Record<'telegram' | 'gmail', boolean>>;
+  };
 };
 
 const DEFAULT_STATE: AppStateV1 = {
@@ -125,6 +134,10 @@ const DEFAULT_STATE: AppStateV1 = {
 export type PermissionsState = {
   catalog: ReadonlyArray<PermissionDef>;
   enabled: Readonly<Record<PermissionId, boolean>>;
+};
+
+export type ConfirmBeforeSendPolicyState = {
+  enabled: Readonly<Record<'telegram' | 'gmail', boolean>>;
 };
 
 export type StateStore = {
@@ -141,6 +154,10 @@ export type StateStore = {
   getPermissions(): Promise<PermissionsState>;
   setPermission(id: PermissionId, enabled: boolean): Promise<void>;
   resetPermissions(): Promise<void>;
+
+  // Policies
+  getConfirmBeforeSendPolicy(): Promise<ConfirmBeforeSendPolicyState>;
+  setConfirmBeforeSendPolicy(integrationId: 'telegram' | 'gmail', enabled: boolean): Promise<void>;
 };
 
 function resolveDataDir(): string {
@@ -190,6 +207,21 @@ function materializePermissions(state: AppStateV1): Record<PermissionId, boolean
   return base;
 }
 
+function getDefaultConfirmBeforeSendPolicy(): Record<'telegram' | 'gmail', boolean> {
+  // Safe by default: if sending is ever enabled, confirmations should be on.
+  return { telegram: true, gmail: true };
+}
+
+function materializeConfirmBeforeSendPolicy(state: AppStateV1): Record<'telegram' | 'gmail', boolean> {
+  const base = getDefaultConfirmBeforeSendPolicy();
+  const overrides = state.policies?.confirmBeforeSend ?? {};
+  for (const k of ['telegram', 'gmail'] as const) {
+    const v = overrides[k];
+    if (typeof v === 'boolean') base[k] = v;
+  }
+  return base;
+}
+
 export function createStateStore(opts?: { dataDir?: string }): StateStore {
   const dataDir = opts?.dataDir ?? resolveDataDir();
   const statePath = path.join(dataDir, 'state.json');
@@ -223,25 +255,30 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     // MVP: generate a small, non-secret config artifact.
     // (Telegram token stays in app state for now; config contains only a reference.)
     const telegramEnabled = Boolean(next.integrations.telegram.token);
+    const permissions = materializePermissions(next);
+    const confirmBeforeSend = materializeConfirmBeforeSendPolicy(next);
 
     const config = {
       meta: {
         generatedBy: 'openclaw-desktop',
         generatorVersion: 1
       },
+      permissions,
+      policy: {
+        confirmBeforeSend
+      },
       channels: {
         telegram: {
           enabled: telegramEnabled,
-          ...(telegramEnabled ? { tokenRef: 'openclaw-desktop:telegramBotToken' } : {})
+          ...(telegramEnabled ? { tokenRef: 'openclaw-desktop:telegramBotToken' } : {}),
+          // Hook for gateway/tool enforcement: allow outbound sends only when explicitly enabled.
+          allowSend: Boolean(permissions['telegram.send'])
         }
       }
     };
 
     const outPath = path.join(dataDir, 'openclaw.generated.json');
-    await atomicWriteFileWithBackup(
-      outPath,
-      JSON.stringify(config, null, 2) + '\n'
-    );
+    await atomicWriteFileWithBackup(outPath, JSON.stringify(config, null, 2) + '\n');
   }
 
   async function getTelegramConnection(): Promise<IntegrationConnection> {
@@ -327,12 +364,40 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
       }
     };
     await writeState(next);
+    await writeGeneratedOpenClawConfig(next);
   }
 
   async function resetPermissions(): Promise<void> {
     const state = await getState();
     const next: AppStateV1 = { ...state, permissions: undefined };
     await writeState(next);
+    await writeGeneratedOpenClawConfig(next);
+  }
+
+  async function getConfirmBeforeSendPolicy(): Promise<ConfirmBeforeSendPolicyState> {
+    const state = await getState();
+    return {
+      enabled: materializeConfirmBeforeSendPolicy(state)
+    };
+  }
+
+  async function setConfirmBeforeSendPolicy(
+    integrationId: 'telegram' | 'gmail',
+    enabled: boolean
+  ): Promise<void> {
+    const state = await getState();
+    const next: AppStateV1 = {
+      ...state,
+      policies: {
+        ...(state.policies ?? {}),
+        confirmBeforeSend: {
+          ...(state.policies?.confirmBeforeSend ?? {}),
+          [integrationId]: enabled
+        }
+      }
+    };
+    await writeState(next);
+    await writeGeneratedOpenClawConfig(next);
   }
 
   return {
@@ -344,6 +409,8 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     clearTelegram,
     getPermissions,
     setPermission,
-    resetPermissions
+    resetPermissions,
+    getConfirmBeforeSendPolicy,
+    setConfirmBeforeSendPolicy
   };
 }

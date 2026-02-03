@@ -60,6 +60,35 @@ describe('state store', () => {
     expect(generated.channels.telegram.enabled).toBe(true);
   });
 
+  it('writes permissions + policy into generated config (hooks for enforcement)', async () => {
+    const dir = await mkTempDir();
+    created.push(dir);
+
+    const store = createStateStore({ dataDir: dir });
+
+    // Defaults: telegram.send is false, but confirm-before-send is true (safe default).
+    await store.setTelegramToken('123:ABC');
+
+    const generatedPath = path.join(dir, 'openclaw.generated.json');
+    const generatedV1 = JSON.parse(await fs.readFile(generatedPath, 'utf8')) as any;
+
+    expect(generatedV1.permissions).toBeTruthy();
+    expect(generatedV1.permissions['telegram.send']).toBe(false);
+    expect(generatedV1.policy?.confirmBeforeSend?.telegram).toBe(true);
+    expect(generatedV1.channels?.telegram?.allowSend).toBe(false);
+
+    // Enabling send should flip allowSend.
+    await store.setPermission('telegram.send', true);
+    const generatedV2 = JSON.parse(await fs.readFile(generatedPath, 'utf8')) as any;
+    expect(generatedV2.permissions['telegram.send']).toBe(true);
+    expect(generatedV2.channels.telegram.allowSend).toBe(true);
+
+    // User can also disable confirm-before-send explicitly.
+    await store.setConfirmBeforeSendPolicy('telegram', false);
+    const generatedV3 = JSON.parse(await fs.readFile(generatedPath, 'utf8')) as any;
+    expect(generatedV3.policy.confirmBeforeSend.telegram).toBe(false);
+  });
+
   it('writes state + generated config atomically with a single-file backup', async () => {
     const dir = await mkTempDir();
     created.push(dir);

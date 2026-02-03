@@ -6,14 +6,14 @@ This file is updated by the cron job as it completes tasks.
 - Target: **M1 — Desktop manager MVP (Telegram)**
 
 ## Last completed task
-- T5.2 Permissions UI screen — 2026-02-04
+- T5.3 Policy enforcement hook (confirm-before-send baseline) — 2026-02-04
 
 ## Working notes
 - Keep tasks small and commit often.
 - Prefer a runnable baseline over perfect architecture.
 
 ## Next task
-- M2 — Permissions framework: T5.3 Policy enforcement hook (confirm-before-send baseline)
+- M2 — Permissions framework: T5.4 Audit log JSONL
 
 ## Notes
 - Gateway lifecycle is implemented via `openclaw gateway <cmd>`; `/status` reflects CLI status parsing and may return `error` if parsing fails.
