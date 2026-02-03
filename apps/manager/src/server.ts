@@ -7,6 +7,7 @@ import { createAuditLog, type AuditLog } from './audit.js';
 import {
   createStateStore,
   type ConfirmBeforeSendPolicyState,
+  type GmailOauthCredsSummary,
   type IntegrationConnection,
   type StateStore
 } from './state/store.js';
@@ -60,6 +61,16 @@ export type ManagerAuditRecentResponse = {
     truncated: boolean;
   };
 };
+
+export type ManagerGmailOauthCredsGetResponse = {
+  ok: true;
+  gmail: {
+    oauthCreds: GmailOauthCredsSummary;
+  };
+};
+
+export type ManagerGmailOauthCredsSetResponse = ManagerGmailOauthCredsGetResponse;
+export type ManagerGmailOauthCredsClearResponse = ManagerGmailOauthCredsGetResponse;
 
 export type ManagerPermissionsGetResponse = {
   ok: true;
@@ -277,6 +288,64 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
           ok: true,
           integrations: {
             telegram: await stateStore.getTelegramConnection()
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'GET' && url.pathname === '/integrations/gmail/oauth-creds') {
+        const body: ManagerGmailOauthCredsGetResponse = {
+          ok: true,
+          gmail: {
+            oauthCreds: await stateStore.getGmailOauthCredsSummary()
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'POST' && url.pathname === '/integrations/gmail/oauth-creds/set') {
+        let parsed: any = null;
+        try {
+          parsed = (await readJson(req)) as any;
+        } catch (err) {
+          if ((err as Error).message === 'invalid_json') {
+            return json(res, 400, { ok: false, error: 'invalid_json' });
+          }
+          throw err;
+        }
+
+        const clientId = String(parsed?.clientId ?? '').trim();
+        const clientSecret = String(parsed?.clientSecret ?? '').trim();
+
+        if (!clientId || !clientSecret) {
+          await safeAudit({
+            type: 'integrations.gmail.oauthCreds.set_failed',
+            actor: 'desktop-ui',
+            details: { error: 'missing_fields' }
+          });
+          return json(res, 400, { ok: false, error: 'missing_fields' });
+        }
+
+        await stateStore.setGmailOauthCreds(clientId, clientSecret);
+        await safeAudit({ type: 'integrations.gmail.oauthCreds.set', actor: 'desktop-ui' });
+
+        const body: ManagerGmailOauthCredsSetResponse = {
+          ok: true,
+          gmail: {
+            oauthCreds: await stateStore.getGmailOauthCredsSummary()
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'POST' && url.pathname === '/integrations/gmail/oauth-creds/clear') {
+        await stateStore.clearGmailOauthCreds();
+        await safeAudit({ type: 'integrations.gmail.oauthCreds.clear', actor: 'desktop-ui' });
+
+        const body: ManagerGmailOauthCredsClearResponse = {
+          ok: true,
+          gmail: {
+            oauthCreds: await stateStore.getGmailOauthCredsSummary()
           }
         };
         return json(res, 200, body);

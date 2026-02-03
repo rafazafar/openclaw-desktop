@@ -10,6 +10,13 @@ const telegramTokenEl = document.getElementById('telegram-token');
 const telegramConnectBtn = document.getElementById('telegram-connect');
 const telegramDisconnectBtn = document.getElementById('telegram-disconnect');
 
+const gmailStateEl = document.getElementById('gmail-state');
+const gmailHintEl = document.getElementById('gmail-hint');
+const gmailClientIdEl = document.getElementById('gmail-client-id');
+const gmailClientSecretEl = document.getElementById('gmail-client-secret');
+const gmailSaveBtn = document.getElementById('gmail-save');
+const gmailClearBtn = document.getElementById('gmail-clear');
+
 const logsEl = document.getElementById('logs');
 const logsHintEl = document.getElementById('logs-hint');
 const logsRefreshBtn = document.getElementById('logs-refresh');
@@ -36,6 +43,9 @@ let lastPermissions = null;
 
 /** @type {any | null} */
 let lastPolicies = null;
+
+/** @type {any | null} */
+let lastGmailOauthCreds = null;
 
 function setHint(text) {
   hintEl.textContent = text;
@@ -94,6 +104,91 @@ function applyTelegramState(telegram) {
       ? `Last error: ${telegram.lastError}`
       : 'Connect a bot token to use Telegram as the chat surface.';
     telegramHintEl.textContent = err;
+  }
+}
+
+function applyGmailOauthCredsState(oauthCreds) {
+  const configured = Boolean(oauthCreds?.configured);
+  gmailStateEl.textContent = configured ? 'configured' : 'not configured';
+
+  if (configured) {
+    const suffix = oauthCreds?.clientIdSuffix ? `…${oauthCreds.clientIdSuffix}` : '';
+    gmailHintEl.textContent = `OAuth credentials saved (${suffix}).`;
+    gmailClearBtn.disabled = false;
+    gmailSaveBtn.disabled = false;
+    gmailClientSecretEl.value = '';
+  } else {
+    const err = oauthCreds?.lastError ? `Last error: ${oauthCreds.lastError}` : '';
+    gmailHintEl.textContent = err || 'Enter a Google OAuth Client ID + Secret.';
+    gmailClearBtn.disabled = true;
+    gmailSaveBtn.disabled = false;
+  }
+}
+
+async function refreshGmailOauthCreds({ quiet = false } = {}) {
+  if (!quiet) {
+    gmailSaveBtn.disabled = true;
+    gmailClearBtn.disabled = true;
+    gmailHintEl.textContent = 'Loading Gmail OAuth…';
+  }
+
+  try {
+    const data = await window.openclaw.gmailOauthCredsGet();
+    lastGmailOauthCreds = data?.gmail?.oauthCreds ?? null;
+    applyGmailOauthCredsState(lastGmailOauthCreds);
+  } catch (err) {
+    lastGmailOauthCreds = null;
+    gmailStateEl.textContent = 'error';
+    gmailHintEl.textContent = `Failed to load: ${String(err?.message ?? err)}`;
+    gmailSaveBtn.disabled = false;
+    gmailClearBtn.disabled = true;
+  } finally {
+    if (!quiet) {
+      gmailSaveBtn.disabled = false;
+    }
+  }
+}
+
+async function saveGmailOauthCreds() {
+  const clientId = String(gmailClientIdEl.value ?? '').trim();
+  const clientSecret = String(gmailClientSecretEl.value ?? '').trim();
+
+  if (!clientId || !clientSecret) {
+    gmailHintEl.textContent = 'Client ID and client secret are required.';
+    return;
+  }
+
+  gmailSaveBtn.disabled = true;
+  gmailClearBtn.disabled = true;
+  gmailHintEl.textContent = 'Saving…';
+
+  try {
+    await window.openclaw.gmailOauthCredsSet(clientId, clientSecret);
+    gmailClientSecretEl.value = '';
+    await refreshGmailOauthCreds({ quiet: true });
+    gmailHintEl.textContent = 'Saved.';
+  } catch (err) {
+    gmailHintEl.textContent = `Save failed: ${String(err?.message ?? err)}`;
+  } finally {
+    gmailSaveBtn.disabled = false;
+    gmailClearBtn.disabled = false;
+  }
+}
+
+async function clearGmailOauthCreds() {
+  gmailSaveBtn.disabled = true;
+  gmailClearBtn.disabled = true;
+  gmailHintEl.textContent = 'Clearing…';
+
+  try {
+    await window.openclaw.gmailOauthCredsClear();
+    await refreshGmailOauthCreds({ quiet: true });
+    gmailHintEl.textContent = 'Cleared.';
+  } catch (err) {
+    gmailHintEl.textContent = `Clear failed: ${String(err?.message ?? err)}`;
+  } finally {
+    gmailSaveBtn.disabled = false;
+    gmailClearBtn.disabled = false;
   }
 }
 
@@ -504,6 +599,12 @@ telegramTokenEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void connectTelegram();
 });
 
+gmailSaveBtn.addEventListener('click', saveGmailOauthCreds);
+gmailClearBtn.addEventListener('click', clearGmailOauthCreds);
+gmailClientSecretEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') void saveGmailOauthCreds();
+});
+
 logsRefreshBtn.addEventListener('click', () => refreshLogs());
 logsCopyBtn.addEventListener('click', copyLogs);
 
@@ -515,6 +616,7 @@ permissionsResetBtn.addEventListener('click', resetPermissions);
 
 // Auto-load once, then poll.
 refreshStatus();
+refreshGmailOauthCreds({ quiet: true });
 refreshLogs({ quiet: true });
 refreshPolicies({ quiet: true });
 refreshPermissions({ quiet: true });

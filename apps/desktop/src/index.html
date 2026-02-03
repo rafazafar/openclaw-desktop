@@ -203,6 +203,21 @@
       <div class="card">
         <div class="row">
           <div>
+            <div><strong>Gmail (OAuth)</strong>: <span id="gmail-state">—</span></div>
+            <div class="sub" id="gmail-hint">Provide your own Google OAuth client so OpenClaw can connect Gmail (read-only).</div>
+          </div>
+          <div class="right" style="flex-wrap: wrap; justify-content: flex-end">
+            <input id="gmail-client-id" type="text" placeholder="Client ID (…apps.googleusercontent.com)" aria-label="Gmail OAuth client id" />
+            <input id="gmail-client-secret" type="password" placeholder="Client secret" aria-label="Gmail OAuth client secret" />
+            <button id="gmail-save">Save</button>
+            <button id="gmail-clear" style="background: #fff; color: #111">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div>
             <div><strong>Logs</strong></div>
             <div class="sub" id="logs-hint">Recent gateway log lines from the local OpenClaw install.</div>
           </div>

@@ -81,7 +81,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
 ---
 
 ## Milestone M3 — Gmail read-only
-- [ ] T6.1 BYO OAuth creds UI
+- [x] T6.1 BYO OAuth creds UI ✅ 2026-02-04 — Added Gmail OAuth creds card in desktop UI + manager endpoints to save/clear creds (summary-only; no secrets returned).
 - [ ] T6.2 OAuth flow + token storage
 - [ ] T6.3 Gmail read-only integration wiring
 

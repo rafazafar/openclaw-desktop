@@ -51,5 +51,15 @@ contextBridge.exposeInMainWorld('openclaw', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ integrationId, enabled })
-    })
+    }),
+
+  gmailOauthCredsGet: async () => managerFetch('/integrations/gmail/oauth-creds'),
+  gmailOauthCredsSet: async (clientId, clientSecret) =>
+    managerFetch('/integrations/gmail/oauth-creds/set', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ clientId, clientSecret })
+    }),
+  gmailOauthCredsClear: async () =>
+    managerFetch('/integrations/gmail/oauth-creds/clear', { method: 'POST' })
 });

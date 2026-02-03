@@ -27,6 +27,9 @@ function createStateStoreStub(overrides?: Partial<any>) {
     setTelegramToken: vi.fn(async () => undefined),
     setTelegramError: vi.fn(async () => undefined),
     clearTelegram: vi.fn(async () => undefined),
+    getGmailOauthCredsSummary: vi.fn(async () => ({ configured: false })),
+    setGmailOauthCreds: vi.fn(async () => undefined),
+    clearGmailOauthCreds: vi.fn(async () => undefined),
     getPermissions: vi.fn(async () => ({ catalog: [], enabled: {} })),
     setPermission: vi.fn(async () => undefined),
     resetPermissions: vi.fn(async () => undefined),
@@ -301,6 +304,72 @@ describe('manager server', () => {
       actor: 'desktop-ui',
       details: { id: 'gateway.control', enabled: false }
     });
+
+    await close();
+  });
+
+  it('GET /integrations/gmail/oauth-creds returns summary without secrets', async () => {
+    const stateStore = createStateStoreStub({
+      getGmailOauthCredsSummary: vi.fn(async () => ({
+        configured: true,
+        clientIdSuffix: 'ent.com',
+        updatedAt: '2026-02-04T00:00:00.000Z'
+      }))
+    });
+
+    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/integrations/gmail/oauth-creds`, {
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.gmail.oauthCreds.configured).toBe(true);
+    // Should not include any secret fields.
+    expect(body.gmail.oauthCreds.clientSecret).toBeUndefined();
+
+    await close();
+  });
+
+  it('POST /integrations/gmail/oauth-creds/set persists creds', async () => {
+    const setGmailOauthCreds = vi.fn(async () => undefined);
+    const stateStore = createStateStoreStub({
+      setGmailOauthCreds,
+      getGmailOauthCredsSummary: vi.fn(async () => ({ configured: true, clientIdSuffix: 'ent.com' }))
+    });
+
+    const auditLog = createAuditLogStub();
+    const server = createManagerServer({ authToken: 'secret', stateStore, auditLog });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/integrations/gmail/oauth-creds/set`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ clientId: 'abc.apps.googleusercontent.com', clientSecret: 'shhh' })
+    });
+
+    expect(res.status).toBe(200);
+    expect(setGmailOauthCreds).toHaveBeenCalledWith('abc.apps.googleusercontent.com', 'shhh');
+
+    await close();
+  });
+
+  it('POST /integrations/gmail/oauth-creds/set validates required fields', async () => {
+    const stateStore = createStateStoreStub();
+
+    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/integrations/gmail/oauth-creds/set`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ clientId: '', clientSecret: '' })
+    });
+
+    expect(res.status).toBe(400);
 
     await close();
   });
