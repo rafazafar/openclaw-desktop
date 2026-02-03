@@ -89,6 +89,41 @@ describe('state store', () => {
     expect(generatedV3.policy.confirmBeforeSend.telegram).toBe(false);
   });
 
+  it('writes gmail integration config without secrets and gates allowRead by permission', async () => {
+    const dir = await mkTempDir();
+    created.push(dir);
+
+    const store = createStateStore({ dataDir: dir });
+
+    await store.setGmailOauthTokens({
+      accessToken: 'ya29.secret-access-token',
+      refreshToken: '1//refresh',
+      scope: 'https://www.googleapis.com/auth/gmail.readonly',
+      tokenType: 'Bearer',
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      accountEmail: 'user@example.com'
+    });
+
+    const generatedPath = path.join(dir, 'openclaw.generated.json');
+    const generatedRaw = await fs.readFile(generatedPath, 'utf8');
+
+    // Never write secrets to generated config.
+    expect(generatedRaw).not.toContain('ya29.secret-access-token');
+    expect(generatedRaw).not.toContain('1//refresh');
+
+    const generatedV1 = JSON.parse(generatedRaw) as any;
+    expect(generatedV1.integrations?.gmail?.enabled).toBe(true);
+    expect(generatedV1.integrations?.gmail?.tokenRef).toBe('openclaw-desktop:gmailOauthTokens');
+    expect(generatedV1.integrations?.gmail?.accountEmail).toBe('user@example.com');
+
+    // Default permission is off.
+    expect(generatedV1.integrations?.gmail?.allowRead).toBe(false);
+
+    await store.setPermission('gmail.read', true);
+    const generatedV2 = JSON.parse(await fs.readFile(generatedPath, 'utf8')) as any;
+    expect(generatedV2.integrations?.gmail?.allowRead).toBe(true);
+  });
+
   it('writes state + generated config atomically with a single-file backup', async () => {
     const dir = await mkTempDir();
     created.push(dir);

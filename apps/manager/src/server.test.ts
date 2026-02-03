@@ -24,6 +24,7 @@ function createStateStoreStub(overrides?: Partial<any>) {
     getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
     writeState: vi.fn(async () => undefined),
     getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
+    getGmailConnection: vi.fn(async () => ({ integrationId: 'gmail' as const, connected: false })),
     setTelegramToken: vi.fn(async () => undefined),
     setTelegramError: vi.fn(async () => undefined),
     clearTelegram: vi.fn(async () => undefined),
@@ -85,7 +86,10 @@ describe('manager server', () => {
     expect(body).toEqual({
       ok: true,
       gateway: { status: 'running' },
-      integrations: { telegram: { integrationId: 'telegram', connected: false } }
+      integrations: {
+        telegram: { integrationId: 'telegram', connected: false },
+        gmail: { integrationId: 'gmail', connected: false }
+      }
     });
     expect(gateway.status).toHaveBeenCalledTimes(1);
 

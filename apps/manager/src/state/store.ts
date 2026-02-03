@@ -86,7 +86,7 @@ async function atomicWriteFileWithBackup(targetPath: string, contents: string): 
 }
 
 export type IntegrationConnection = {
-  integrationId: 'telegram';
+  integrationId: 'telegram' | 'gmail';
   connected: boolean;
   accountLabel?: string;
   connectedAt?: string;
@@ -130,6 +130,8 @@ export type AppStateV1 = {
         scope?: string;
         tokenType?: string;
         expiresAt?: string;
+        /** Non-secret identity label derived from Gmail API (best-effort). */
+        accountEmail?: string;
         updatedAt?: string;
         lastError?: string;
       };
@@ -186,6 +188,8 @@ export type GmailOauthCreds = {
 export type GmailOauthTokensSummary = {
   authorized: boolean;
   scope?: string;
+  /** Non-secret identity label derived from Gmail API (best-effort). */
+  accountEmail?: string;
   updatedAt?: string;
   expiresAt?: string;
   needsAttention?: boolean;
@@ -198,6 +202,8 @@ export type GmailOauthTokens = {
   scope?: string;
   tokenType?: string;
   expiresAt?: string;
+  /** Non-secret identity label derived from Gmail API (best-effort). */
+  accountEmail?: string;
 };
 
 export type StateStore = {
@@ -209,6 +215,8 @@ export type StateStore = {
   setTelegramToken(token: string): Promise<void>;
   setTelegramError(message: string): Promise<void>;
   clearTelegram(): Promise<void>;
+
+  getGmailConnection(): Promise<IntegrationConnection>;
 
   getGmailOauthCredsSummary(): Promise<GmailOauthCredsSummary>;
   /** Internal use only; includes secret. Never return via API. */
@@ -318,6 +326,8 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     // MVP: generate a small, non-secret config artifact.
     // (Telegram token stays in app state for now; config contains only a reference.)
     const telegramEnabled = Boolean(next.integrations.telegram.token);
+    const gmailAuthorized = Boolean(next.integrations.gmail?.tokens?.accessToken);
+
     const permissions = materializePermissions(next);
     const confirmBeforeSend = materializeConfirmBeforeSendPolicy(next);
 
@@ -336,6 +346,16 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
           ...(telegramEnabled ? { tokenRef: 'openclaw-desktop:telegramBotToken' } : {}),
           // Hook for gateway/tool enforcement: allow outbound sends only when explicitly enabled.
           allowSend: Boolean(permissions['telegram.send'])
+        }
+      },
+      integrations: {
+        gmail: {
+          enabled: gmailAuthorized,
+          ...(gmailAuthorized ? { tokenRef: 'openclaw-desktop:gmailOauthTokens' } : {}),
+          accountEmail: next.integrations.gmail?.tokens?.accountEmail,
+          // Hook for gateway/tool enforcement.
+          allowRead: Boolean(permissions['gmail.read']),
+          allowSend: Boolean(permissions['gmail.send'])
         }
       }
     };
@@ -407,6 +427,23 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     };
     await writeState(next);
     await writeGeneratedOpenClawConfig(next);
+  }
+
+  async function getGmailConnection(): Promise<IntegrationConnection> {
+    const state = await getState();
+    const tokens = state.integrations.gmail?.tokens;
+
+    const accountEmail = tokens?.accountEmail;
+
+    return {
+      integrationId: 'gmail',
+      connected: Boolean(tokens?.accessToken),
+      accountLabel: accountEmail,
+      connectedAt: tokens?.updatedAt,
+      lastValidatedAt: tokens?.updatedAt,
+      needsAttention: Boolean(tokens?.lastError),
+      lastError: tokens?.lastError
+    };
   }
 
   async function getPermissions(): Promise<PermissionsState> {
@@ -537,6 +574,7 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     return {
       authorized: Boolean(tokens?.accessToken),
       scope: tokens?.scope,
+      accountEmail: tokens?.accountEmail,
       updatedAt: tokens?.updatedAt,
       expiresAt: tokens?.expiresAt,
       needsAttention: Boolean(tokens?.lastError),
@@ -560,6 +598,7 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
             scope: tokens.scope,
             tokenType: tokens.tokenType,
             expiresAt: tokens.expiresAt,
+            accountEmail: tokens.accountEmail,
             updatedAt: now,
             lastError: undefined
           }
@@ -595,6 +634,7 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     setTelegramToken,
     setTelegramError,
     clearTelegram,
+    getGmailConnection,
     getGmailOauthCredsSummary,
     getGmailOauthCreds,
     setGmailOauthCreds,

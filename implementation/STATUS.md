@@ -3,17 +3,20 @@
 This file is updated by the cron job as it completes tasks.
 
 ## Current milestone
-- Target: **M1 — Desktop manager MVP (Telegram)**
+- All tasks complete
 
 ## Last completed task
-- T6.2 OAuth flow + token storage — 2026-02-04
+- T6.3 Gmail read-only integration wiring — 2026-02-04
 
 ## Working notes
 - Keep tasks small and commit often.
 - Prefer a runnable baseline over perfect architecture.
 
 ## Next task
-- M3 — Gmail read-only: T6.3 Gmail read-only integration wiring
+- (none)
+
+## Completion
+- All tasks complete
 
 ## Notes
 - Gateway lifecycle is implemented via `openclaw gateway <cmd>`; `/status` reflects CLI status parsing and may return `error` if parsing fails.

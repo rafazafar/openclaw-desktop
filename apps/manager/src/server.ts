@@ -20,6 +20,7 @@ export type ManagerStatusResponse = {
   gateway: GatewayState;
   integrations: {
     telegram: IntegrationConnection;
+    gmail: IntegrationConnection;
   };
 };
 
@@ -238,7 +239,8 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
           ok: true,
           gateway: await gateway.status(),
           integrations: {
-            telegram: await stateStore.getTelegramConnection()
+            telegram: await stateStore.getTelegramConnection(),
+            gmail: await stateStore.getGmailConnection()
           }
         };
         return json(res, 200, body);
@@ -552,12 +554,31 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
             ? new Date(Date.now() + expiresInSec * 1000).toISOString()
             : undefined;
 
+        // Best-effort: resolve account identity from Gmail API.
+        let accountEmail: string | undefined;
+        try {
+          const profileRes = await googleFetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+            method: 'GET',
+            headers: {
+              authorization: `Bearer ${accessToken}`
+            }
+          });
+          if (profileRes.ok) {
+            const profile = (await profileRes.json().catch(() => null)) as any;
+            const email = String(profile?.emailAddress ?? '').trim();
+            if (email) accountEmail = email;
+          }
+        } catch {
+          // ignore; identity is optional
+        }
+
         await stateStore.setGmailOauthTokens({
           accessToken,
           refreshToken,
           scope,
           tokenType,
-          expiresAt
+          expiresAt,
+          accountEmail
         });
         await safeAudit({ type: 'integrations.gmail.oauth.authorized', actor: 'browser' });
 

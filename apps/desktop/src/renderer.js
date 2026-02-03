@@ -139,8 +139,11 @@ function applyGmailOauthStatusState(oauthStatus) {
     gmailAuthorizeBtn.disabled = true;
     gmailDeauthBtn.disabled = false;
 
+    const who = oauthStatus?.oauthTokens?.accountEmail
+      ? ` as ${oauthStatus.oauthTokens.accountEmail}`
+      : '';
     const scope = oauthStatus?.oauthTokens?.scope ? ` (${oauthStatus.oauthTokens.scope})` : '';
-    gmailHintEl.textContent = `Gmail authorized${scope}.`;
+    gmailHintEl.textContent = `Gmail authorized${who}${scope}.`;
     return;
   }
 
