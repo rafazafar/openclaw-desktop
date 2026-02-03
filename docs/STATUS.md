@@ -45,14 +45,13 @@ These are optional but useful PRD-adjacent docs to make later implementation smo
 - ✅ SUPPORT_BUNDLE_SPEC.md (2026-02-04) — exactly what diagnostics include + redaction rules
 
 ### Project management
-- ⬜ BACKLOG.md — prioritized issues list derived from PRD/roadmap
+- ✅ BACKLOG.md (2026-02-04) — prioritized issues list derived from PRD/roadmap
 - ⬜ DECISIONS.md — ADR-style decisions (Electron vs Tauri, bundling strategy)
 
 ---
 
 ## Next task (picked up by cron)
 1) Create missing backlog docs in sensible order:
-   - BACKLOG.md
    - DECISIONS.md
 2) Update this file after each doc.
 3) Commit directly to `master` and push.
