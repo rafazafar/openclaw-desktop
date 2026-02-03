@@ -49,6 +49,15 @@ describe('state store', () => {
       needsAttention: false,
       lastError: undefined
     });
+
+    // Also writes a minimal, non-secret OpenClaw config artifact.
+    const generatedPath = path.join(dir, 'openclaw.generated.json');
+    const generatedRaw = await fs.readFile(generatedPath, 'utf8');
+    expect(generatedRaw).toContain('generatedBy');
+    expect(generatedRaw).toContain('openclaw-desktop');
+    expect(generatedRaw).not.toContain('123:ABC');
+    const generated = JSON.parse(generatedRaw) as any;
+    expect(generated.channels.telegram.enabled).toBe(true);
   });
 
   it('clearTelegram removes token', async () => {
@@ -64,6 +73,11 @@ describe('state store', () => {
 
     const conn = await store.getTelegramConnection();
     expect(conn.connected).toBe(false);
+
+    const generatedPath = path.join(dir, 'openclaw.generated.json');
+    const generated = JSON.parse(await fs.readFile(generatedPath, 'utf8')) as any;
+    expect(generated.channels.telegram.enabled).toBe(false);
+    expect(generated.channels.telegram.tokenRef).toBeUndefined();
   });
 
   it('setTelegramError clears token and marks needsAttention', async () => {

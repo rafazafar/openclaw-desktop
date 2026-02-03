@@ -97,6 +97,30 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     await fs.writeFile(statePath, JSON.stringify(next, null, 2) + '\n', 'utf8');
   }
 
+  async function writeGeneratedOpenClawConfig(next: AppStateV1): Promise<void> {
+    await ensureDir();
+
+    // MVP: generate a small, non-secret config artifact.
+    // (Telegram token stays in app state for now; config contains only a reference.)
+    const telegramEnabled = Boolean(next.integrations.telegram.token);
+
+    const config = {
+      meta: {
+        generatedBy: 'openclaw-desktop',
+        generatorVersion: 1
+      },
+      channels: {
+        telegram: {
+          enabled: telegramEnabled,
+          ...(telegramEnabled ? { tokenRef: 'openclaw-desktop:telegramBotToken' } : {})
+        }
+      }
+    };
+
+    const outPath = path.join(dataDir, 'openclaw.generated.json');
+    await fs.writeFile(outPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+  }
+
   async function getTelegramConnection(): Promise<IntegrationConnection> {
     const state = await getState();
     const tg = state.integrations.telegram;
@@ -127,6 +151,7 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
       }
     };
     await writeState(next);
+    await writeGeneratedOpenClawConfig(next);
   }
 
   async function setTelegramError(message: string): Promise<void> {
@@ -145,6 +170,7 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
       }
     };
     await writeState(next);
+    await writeGeneratedOpenClawConfig(next);
   }
 
   async function clearTelegram(): Promise<void> {
@@ -157,6 +183,7 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
       }
     };
     await writeState(next);
+    await writeGeneratedOpenClawConfig(next);
   }
 
   return {
