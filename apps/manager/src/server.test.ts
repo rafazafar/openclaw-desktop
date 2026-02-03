@@ -29,13 +29,21 @@ describe('manager server', () => {
 
   it('GET /status returns gateway status from controller', async () => {
     const gateway: GatewayController = {
-      status: vi.fn(async () => ({ status: 'running' })),
-      start: vi.fn(async () => ({ status: 'running' })),
-      stop: vi.fn(async () => ({ status: 'stopped' })),
-      restart: vi.fn(async () => ({ status: 'running' }))
+      status: vi.fn(async () => ({ status: 'running' as const })),
+      start: vi.fn(async () => ({ status: 'running' as const })),
+      stop: vi.fn(async () => ({ status: 'stopped' as const })),
+      restart: vi.fn(async () => ({ status: 'running' as const }))
     };
 
-    const server = createManagerServer({ authToken: 'secret', gateway });
+    const stateStore = {
+      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
+      writeState: vi.fn(async () => undefined),
+      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })), 
+      setTelegramToken: vi.fn(async () => undefined),
+      clearTelegram: vi.fn(async () => undefined)
+    };
+
+    const server = createManagerServer({ authToken: 'secret', gateway, stateStore });
     const { url, close } = await listen(server);
 
     const res = await fetch(`${url}/status`, {
@@ -44,7 +52,11 @@ describe('manager server', () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ ok: true, gateway: { status: 'running' } });
+    expect(body).toEqual({
+      ok: true,
+      gateway: { status: 'running' },
+      integrations: { telegram: { integrationId: 'telegram', connected: false } }
+    });
     expect(gateway.status).toHaveBeenCalledTimes(1);
 
     await close();
@@ -52,10 +64,10 @@ describe('manager server', () => {
 
   it('POST /gateway/start calls controller start', async () => {
     const gateway: GatewayController = {
-      status: vi.fn(async () => ({ status: 'stopped' })),
-      start: vi.fn(async () => ({ status: 'running' })),
-      stop: vi.fn(async () => ({ status: 'stopped' })),
-      restart: vi.fn(async () => ({ status: 'running' }))
+      status: vi.fn(async () => ({ status: 'stopped' as const })),
+      start: vi.fn(async () => ({ status: 'running' as const })),
+      stop: vi.fn(async () => ({ status: 'stopped' as const })),
+      restart: vi.fn(async () => ({ status: 'running' as const }))
     };
 
     const server = createManagerServer({ authToken: 'secret', gateway });

@@ -1,0 +1,68 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createStateStore } from './store.js';
+
+async function mkTempDir(): Promise<string> {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openclaw-desktop-'));
+  return base;
+}
+
+describe('state store', () => {
+  const created: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      created.map(async (dir) => {
+        try {
+          await fs.rm(dir, { recursive: true, force: true });
+        } catch {
+          // ignore
+        }
+      })
+    );
+    created.length = 0;
+  });
+
+  it('starts with default state and persists telegram token (not exposed in connection status)', async () => {
+    const dir = await mkTempDir();
+    created.push(dir);
+
+    const store = createStateStore({ dataDir: dir });
+
+    const initial = await store.getState();
+    expect(initial.schemaVersion).toBe(1);
+    expect(initial.integrations.telegram).toEqual({});
+
+    await store.setTelegramToken('123:ABC');
+
+    const saved = await store.getState();
+    expect(saved.integrations.telegram.token).toBe('123:ABC');
+
+    const conn = await store.getTelegramConnection();
+    expect(conn).toEqual({
+      integrationId: 'telegram',
+      connected: true,
+      connectedAt: expect.any(String),
+      lastValidatedAt: undefined,
+      needsAttention: false,
+      lastError: undefined
+    });
+  });
+
+  it('clearTelegram removes token', async () => {
+    const dir = await mkTempDir();
+    created.push(dir);
+
+    const store = createStateStore({ dataDir: dir });
+    await store.setTelegramToken('123:ABC');
+    await store.clearTelegram();
+
+    const state = await store.getState();
+    expect(state.integrations.telegram).toEqual({});
+
+    const conn = await store.getTelegramConnection();
+    expect(conn.connected).toBe(false);
+  });
+});

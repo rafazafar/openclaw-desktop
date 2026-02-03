@@ -1,10 +1,14 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { createGatewayController, type GatewayController, type GatewayState } from './gateway.js';
+import { createStateStore, type IntegrationConnection, type StateStore } from './state/store.js';
 
 export type ManagerStatusResponse = {
   ok: true;
   gateway: GatewayState;
+  integrations: {
+    telegram: IntegrationConnection;
+  };
 };
 
 export type ManagerGatewayActionResponse = {
@@ -17,6 +21,8 @@ export type ManagerServerOptions = {
   authToken: string;
   /** Override for tests; defaults to OpenClaw CLI-backed controller. */
   gateway?: GatewayController;
+  /** Override for tests; defaults to local JSON file store. */
+  stateStore?: StateStore;
 };
 
 function json(res: http.ServerResponse, statusCode: number, body: unknown): void {
@@ -32,6 +38,7 @@ function unauthorized(res: http.ServerResponse): void {
 
 export function createManagerServer(opts: ManagerServerOptions): http.Server {
   const gateway = opts.gateway ?? createGatewayController();
+  const stateStore = opts.stateStore ?? createStateStore();
 
   return http.createServer((req, res) => {
     void (async () => {
@@ -45,7 +52,10 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
       if (method === 'GET' && url.pathname === '/status') {
         const body: ManagerStatusResponse = {
           ok: true,
-          gateway: await gateway.status()
+          gateway: await gateway.status(),
+          integrations: {
+            telegram: await stateStore.getTelegramConnection()
+          }
         };
         return json(res, 200, body);
       }

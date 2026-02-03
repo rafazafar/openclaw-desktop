@@ -42,7 +42,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - Gateway control button calls manager start/stop and reflects transient states while actions are in-flight.
 
 ### P0-INTEGRATIONS: TELEGRAM
-- [ ] **T2.1 Telegram integration: data model + storage**
+- [x] **T2.1 Telegram integration: data model + storage** ✅ 2026-02-04 — Added manager state store (JSON in app data) with Telegram token storage (dev-only) and `/status` now returns Telegram connection state (no secret values).
   - Store bot token securely (dev: env/file; later: keychain).
   - Represent integration connection state in manager.
 
