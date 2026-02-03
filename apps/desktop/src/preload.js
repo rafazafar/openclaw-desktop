@@ -30,5 +30,6 @@ contextBridge.exposeInMainWorld('openclaw', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token })
-    })
+    }),
+  telegramDisconnect: async () => managerFetch('/integrations/telegram/disconnect', { method: 'POST' })
 });

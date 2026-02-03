@@ -8,6 +8,7 @@ const telegramStateEl = document.getElementById('telegram-state');
 const telegramHintEl = document.getElementById('telegram-hint');
 const telegramTokenEl = document.getElementById('telegram-token');
 const telegramConnectBtn = document.getElementById('telegram-connect');
+const telegramDisconnectBtn = document.getElementById('telegram-disconnect');
 
 /** @type {any | null} */
 let lastStatus = null;
@@ -60,10 +61,12 @@ function applyTelegramState(telegram) {
     const label = telegram?.accountLabel ? ` (${telegram.accountLabel})` : '';
     telegramHintEl.textContent = `Telegram is connected${label}.`;
     telegramConnectBtn.disabled = true;
+    telegramDisconnectBtn.disabled = false;
     telegramTokenEl.disabled = true;
     telegramTokenEl.value = '';
   } else {
     telegramConnectBtn.disabled = false;
+    telegramDisconnectBtn.disabled = true;
     telegramTokenEl.disabled = false;
     const err = telegram?.lastError ? `Last error: ${telegram.lastError}` : 'Connect a bot token to use Telegram as the chat surface.';
     telegramHintEl.textContent = err;
@@ -144,6 +147,7 @@ async function connectTelegram() {
   }
 
   telegramConnectBtn.disabled = true;
+  telegramDisconnectBtn.disabled = true;
   telegramHintEl.textContent = 'Validating token…';
 
   try {
@@ -152,13 +156,31 @@ async function connectTelegram() {
     await refreshStatus({ quiet: true });
   } catch (err) {
     telegramConnectBtn.disabled = false;
+    telegramDisconnectBtn.disabled = false;
     telegramHintEl.textContent = `Failed to connect: ${String(err?.message ?? err)}`;
+  }
+}
+
+async function disconnectTelegram() {
+  telegramConnectBtn.disabled = true;
+  telegramDisconnectBtn.disabled = true;
+  telegramHintEl.textContent = 'Disconnecting…';
+
+  try {
+    const data = await window.openclaw.telegramDisconnect();
+    lastStatus = { ...(lastStatus ?? {}), ...data };
+    await refreshStatus({ quiet: true });
+  } catch (err) {
+    telegramHintEl.textContent = `Failed to disconnect: ${String(err?.message ?? err)}`;
+    telegramConnectBtn.disabled = false;
+    telegramDisconnectBtn.disabled = false;
   }
 }
 
 refreshBtn.addEventListener('click', () => refreshStatus());
 toggleBtn.addEventListener('click', toggleGateway);
 telegramConnectBtn.addEventListener('click', connectTelegram);
+telegramDisconnectBtn.addEventListener('click', disconnectTelegram);
 telegramTokenEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void connectTelegram();
 });

@@ -23,6 +23,13 @@ export type ManagerTelegramConnectResponse = {
   };
 };
 
+export type ManagerTelegramDisconnectResponse = {
+  ok: true;
+  integrations: {
+    telegram: IntegrationConnection;
+  };
+};
+
 export type ManagerServerOptions = {
   /** Token required in `x-openclaw-token` header. */
   authToken: string;
@@ -154,6 +161,17 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
 
         await stateStore.setTelegramToken(token);
         const body: ManagerTelegramConnectResponse = {
+          ok: true,
+          integrations: {
+            telegram: await stateStore.getTelegramConnection()
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'POST' && url.pathname === '/integrations/telegram/disconnect') {
+        await stateStore.clearTelegram();
+        const body: ManagerTelegramDisconnectResponse = {
           ok: true,
           integrations: {
             telegram: await stateStore.getTelegramConnection()

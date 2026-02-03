@@ -50,7 +50,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - UI: token input + connect button.
   - Manager: validate token (basic) and persist.
 
-- [ ] **T2.3 Telegram disconnect flow**
+- [x] **T2.3 Telegram disconnect flow** ✅ 2026-02-04 — Added manager POST `/integrations/telegram/disconnect` (clears stored token) + desktop Disconnect button.
   - UI disconnect.
   - Manager removes token/config.
 

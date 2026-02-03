@@ -148,4 +148,30 @@ describe('manager server', () => {
 
     await close();
   });
+
+  it('POST /integrations/telegram/disconnect clears telegram state', async () => {
+    const stateStore = {
+      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: { token: '123:ABC' } } })),
+      writeState: vi.fn(async () => undefined),
+      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
+      setTelegramToken: vi.fn(async () => undefined),
+      setTelegramError: vi.fn(async () => undefined),
+      clearTelegram: vi.fn(async () => undefined)
+    };
+
+    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/integrations/telegram/disconnect`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true, integrations: { telegram: { integrationId: 'telegram', connected: false } } });
+    expect(stateStore.clearTelegram).toHaveBeenCalledTimes(1);
+
+    await close();
+  });
 });
