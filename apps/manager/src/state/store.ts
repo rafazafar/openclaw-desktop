@@ -118,6 +118,21 @@ export type AppStateV1 = {
         updatedAt?: string;
         lastError?: string;
       };
+
+      /**
+       * OAuth tokens from the interactive flow.
+       *
+       * Stored as plaintext for MVP/dev only. Do not return secrets via API.
+       */
+      tokens?: {
+        accessToken?: string;
+        refreshToken?: string;
+        scope?: string;
+        tokenType?: string;
+        expiresAt?: string;
+        updatedAt?: string;
+        lastError?: string;
+      };
     };
   };
   /**
@@ -163,6 +178,28 @@ export type GmailOauthCredsSummary = {
   lastError?: string;
 };
 
+export type GmailOauthCreds = {
+  clientId: string;
+  clientSecret: string;
+};
+
+export type GmailOauthTokensSummary = {
+  authorized: boolean;
+  scope?: string;
+  updatedAt?: string;
+  expiresAt?: string;
+  needsAttention?: boolean;
+  lastError?: string;
+};
+
+export type GmailOauthTokens = {
+  accessToken: string;
+  refreshToken?: string;
+  scope?: string;
+  tokenType?: string;
+  expiresAt?: string;
+};
+
 export type StateStore = {
   getState(): Promise<AppStateV1>;
   writeState(next: AppStateV1): Promise<void>;
@@ -174,8 +211,14 @@ export type StateStore = {
   clearTelegram(): Promise<void>;
 
   getGmailOauthCredsSummary(): Promise<GmailOauthCredsSummary>;
+  /** Internal use only; includes secret. Never return via API. */
+  getGmailOauthCreds(): Promise<GmailOauthCreds | null>;
   setGmailOauthCreds(clientId: string, clientSecret: string): Promise<void>;
   clearGmailOauthCreds(): Promise<void>;
+
+  getGmailOauthTokensSummary(): Promise<GmailOauthTokensSummary>;
+  setGmailOauthTokens(tokens: GmailOauthTokens): Promise<void>;
+  clearGmailOauthTokens(): Promise<void>;
 
   // Permissions
   getPermissions(): Promise<PermissionsState>;
@@ -437,6 +480,15 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     };
   }
 
+  async function getGmailOauthCreds(): Promise<GmailOauthCreds | null> {
+    const state = await getState();
+    const oauth = state.integrations.gmail?.oauth;
+    const clientId = String(oauth?.clientId ?? '').trim();
+    const clientSecret = String(oauth?.clientSecret ?? '').trim();
+    if (!clientId || !clientSecret) return null;
+    return { clientId, clientSecret };
+  }
+
   async function setGmailOauthCreds(clientId: string, clientSecret: string): Promise<void> {
     const state = await getState();
     const now = new Date().toISOString();
@@ -478,6 +530,64 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     await writeGeneratedOpenClawConfig(next);
   }
 
+  async function getGmailOauthTokensSummary(): Promise<GmailOauthTokensSummary> {
+    const state = await getState();
+    const tokens = state.integrations.gmail?.tokens;
+
+    return {
+      authorized: Boolean(tokens?.accessToken),
+      scope: tokens?.scope,
+      updatedAt: tokens?.updatedAt,
+      expiresAt: tokens?.expiresAt,
+      needsAttention: Boolean(tokens?.lastError),
+      lastError: tokens?.lastError
+    };
+  }
+
+  async function setGmailOauthTokens(tokens: GmailOauthTokens): Promise<void> {
+    const state = await getState();
+    const now = new Date().toISOString();
+
+    const next: AppStateV1 = {
+      ...state,
+      integrations: {
+        ...state.integrations,
+        gmail: {
+          ...(state.integrations.gmail ?? {}),
+          tokens: {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            scope: tokens.scope,
+            tokenType: tokens.tokenType,
+            expiresAt: tokens.expiresAt,
+            updatedAt: now,
+            lastError: undefined
+          }
+        }
+      }
+    };
+
+    await writeState(next);
+    await writeGeneratedOpenClawConfig(next);
+  }
+
+  async function clearGmailOauthTokens(): Promise<void> {
+    const state = await getState();
+    const next: AppStateV1 = {
+      ...state,
+      integrations: {
+        ...state.integrations,
+        gmail: {
+          ...(state.integrations.gmail ?? {}),
+          tokens: undefined
+        }
+      }
+    };
+
+    await writeState(next);
+    await writeGeneratedOpenClawConfig(next);
+  }
+
   return {
     getState,
     writeState,
@@ -486,8 +596,12 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     setTelegramError,
     clearTelegram,
     getGmailOauthCredsSummary,
+    getGmailOauthCreds,
     setGmailOauthCreds,
     clearGmailOauthCreds,
+    getGmailOauthTokensSummary,
+    setGmailOauthTokens,
+    clearGmailOauthTokens,
     getPermissions,
     setPermission,
     resetPermissions,

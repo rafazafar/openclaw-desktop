@@ -61,5 +61,14 @@ contextBridge.exposeInMainWorld('openclaw', {
       body: JSON.stringify({ clientId, clientSecret })
     }),
   gmailOauthCredsClear: async () =>
-    managerFetch('/integrations/gmail/oauth-creds/clear', { method: 'POST' })
+    managerFetch('/integrations/gmail/oauth-creds/clear', { method: 'POST' }),
+
+  gmailOauthStatus: async () => managerFetch('/integrations/gmail/oauth/status'),
+  gmailOauthStart: async () => managerFetch('/integrations/gmail/oauth/start', { method: 'POST' }),
+  gmailOauthClear: async () => managerFetch('/integrations/gmail/oauth/clear', { method: 'POST' }),
+
+  openExternal: async (url) => {
+    const { shell } = await import('electron');
+    await shell.openExternal(String(url));
+  }
 });

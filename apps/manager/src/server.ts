@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { URL } from 'node:url';
 import { createGatewayController, type GatewayController, type GatewayState } from './gateway.js';
 import { resolveGatewayLogFilePath, tailFileLines } from './logs.js';
@@ -8,6 +9,7 @@ import {
   createStateStore,
   type ConfirmBeforeSendPolicyState,
   type GmailOauthCredsSummary,
+  type GmailOauthTokensSummary,
   type IntegrationConnection,
   type StateStore
 } from './state/store.js';
@@ -72,6 +74,24 @@ export type ManagerGmailOauthCredsGetResponse = {
 export type ManagerGmailOauthCredsSetResponse = ManagerGmailOauthCredsGetResponse;
 export type ManagerGmailOauthCredsClearResponse = ManagerGmailOauthCredsGetResponse;
 
+export type ManagerGmailOauthStatusResponse = {
+  ok: true;
+  gmail: {
+    oauthCreds: GmailOauthCredsSummary;
+    oauthTokens: GmailOauthTokensSummary;
+    redirectUri: string;
+  };
+};
+
+export type ManagerGmailOauthStartResponse = {
+  ok: true;
+  gmail: {
+    authUrl: string;
+    redirectUri: string;
+    scope: string;
+  };
+};
+
 export type ManagerPermissionsGetResponse = {
   ok: true;
   permissions: {
@@ -117,6 +137,8 @@ export type ManagerServerOptions = {
   stateStore?: StateStore;
   /** Override for tests; defaults to global fetch. */
   telegramFetch?: typeof fetch;
+  /** Override for tests; defaults to global fetch. */
+  googleFetch?: typeof fetch;
   /** Override for tests; resolves the gateway log file path. */
   logFileResolver?: () => Promise<string | null>;
   /** Override for tests; defaults to JSONL audit log in app data dir. */
@@ -128,6 +150,12 @@ function json(res: http.ServerResponse, statusCode: number, body: unknown): void
   res.statusCode = statusCode;
   res.setHeader('content-type', 'application/json; charset=utf-8');
   res.end(payload);
+}
+
+function html(res: http.ServerResponse, statusCode: number, body: string): void {
+  res.statusCode = statusCode;
+  res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.end(body);
 }
 
 function unauthorized(res: http.ServerResponse): void {
@@ -173,6 +201,7 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
   const gateway = opts.gateway ?? createGatewayController();
   const stateStore = opts.stateStore ?? createStateStore();
   const telegramFetch = opts.telegramFetch ?? fetch;
+  const googleFetch = opts.googleFetch ?? fetch;
   const auditLog = opts.auditLog ?? createAuditLog();
 
   async function safeAudit(event: Parameters<AuditLog['append']>[0]): Promise<void> {
@@ -183,14 +212,26 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
     }
   }
 
+  // Gmail OAuth: we keep a single pending state in-memory (MVP).
+  // This is sufficient for local, single-user desktop flows.
+  let pendingGmailOauth:
+    | { state: string; createdAtMs: number; redirectUri: string; scope: string }
+    | undefined;
+
   return http.createServer((req, res) => {
     void (async () => {
       const method = req.method ?? 'GET';
       const url = new URL(req.url ?? '/', 'http://127.0.0.1');
 
-      // Local auth: require a header token for all endpoints (MVP).
-      const token = String(req.headers['x-openclaw-token'] ?? '');
-      if (token !== opts.authToken) return unauthorized(res);
+      const isPublicOauthCallback =
+        method === 'GET' && url.pathname === '/integrations/gmail/oauth/callback';
+
+      // Local auth: require a header token for all endpoints (MVP),
+      // except the OAuth callback which is reached via an external browser.
+      if (!isPublicOauthCallback) {
+        const token = String(req.headers['x-openclaw-token'] ?? '');
+        if (token !== opts.authToken) return unauthorized(res);
+      }
 
       if (method === 'GET' && url.pathname === '/status') {
         const body: ManagerStatusResponse = {
@@ -349,6 +390,184 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
           }
         };
         return json(res, 200, body);
+      }
+
+      if (method === 'GET' && url.pathname === '/integrations/gmail/oauth/status') {
+        const host = String(req.headers.host ?? '127.0.0.1');
+        const redirectUri = `http://${host}/integrations/gmail/oauth/callback`;
+
+        const body: ManagerGmailOauthStatusResponse = {
+          ok: true,
+          gmail: {
+            oauthCreds: await stateStore.getGmailOauthCredsSummary(),
+            oauthTokens: await stateStore.getGmailOauthTokensSummary(),
+            redirectUri
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'POST' && url.pathname === '/integrations/gmail/oauth/start') {
+        const host = String(req.headers.host ?? '127.0.0.1');
+        const redirectUri = `http://${host}/integrations/gmail/oauth/callback`;
+
+        const scope = 'https://www.googleapis.com/auth/gmail.readonly';
+        const creds = await stateStore.getGmailOauthCreds();
+        if (!creds) {
+          await safeAudit({
+            type: 'integrations.gmail.oauth.start_failed',
+            actor: 'desktop-ui',
+            details: { error: 'missing_oauth_creds' }
+          });
+          return json(res, 400, { ok: false, error: 'missing_oauth_creds', redirectUri });
+        }
+
+        const state = crypto.randomUUID();
+        pendingGmailOauth = { state, createdAtMs: Date.now(), redirectUri, scope };
+
+        const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+        authUrl.searchParams.set('client_id', creds.clientId);
+        authUrl.searchParams.set('redirect_uri', redirectUri);
+        authUrl.searchParams.set('response_type', 'code');
+        authUrl.searchParams.set('scope', scope);
+        authUrl.searchParams.set('access_type', 'offline');
+        authUrl.searchParams.set('prompt', 'consent');
+        authUrl.searchParams.set('include_granted_scopes', 'true');
+        authUrl.searchParams.set('state', state);
+
+        await safeAudit({ type: 'integrations.gmail.oauth.start', actor: 'desktop-ui' });
+
+        const body: ManagerGmailOauthStartResponse = {
+          ok: true,
+          gmail: {
+            authUrl: authUrl.toString(),
+            redirectUri,
+            scope
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'POST' && url.pathname === '/integrations/gmail/oauth/clear') {
+        await stateStore.clearGmailOauthTokens();
+        await safeAudit({ type: 'integrations.gmail.oauth.clear', actor: 'desktop-ui' });
+
+        const host = String(req.headers.host ?? '127.0.0.1');
+        const redirectUri = `http://${host}/integrations/gmail/oauth/callback`;
+
+        const body: ManagerGmailOauthStatusResponse = {
+          ok: true,
+          gmail: {
+            oauthCreds: await stateStore.getGmailOauthCredsSummary(),
+            oauthTokens: await stateStore.getGmailOauthTokensSummary(),
+            redirectUri
+          }
+        };
+        return json(res, 200, body);
+      }
+
+      if (method === 'GET' && url.pathname === '/integrations/gmail/oauth/callback') {
+        const error = String(url.searchParams.get('error') ?? '').trim();
+        const code = String(url.searchParams.get('code') ?? '').trim();
+        const state = String(url.searchParams.get('state') ?? '').trim();
+
+        if (error) {
+          return html(
+            res,
+            400,
+            `<!doctype html><html><body><h3>Gmail authorization failed</h3><p>${error}</p></body></html>`
+          );
+        }
+
+        if (!pendingGmailOauth) {
+          return html(
+            res,
+            400,
+            '<!doctype html><html><body><h3>No pending OAuth request</h3><p>Please start the flow again from the desktop app.</p></body></html>'
+          );
+        }
+
+        const expired = Date.now() - pendingGmailOauth.createdAtMs > 10 * 60 * 1000;
+        if (expired || !state || state !== pendingGmailOauth.state || !code) {
+          return html(
+            res,
+            400,
+            '<!doctype html><html><body><h3>Invalid OAuth callback</h3><p>Please start the flow again from the desktop app.</p></body></html>'
+          );
+        }
+
+        const creds = await stateStore.getGmailOauthCreds();
+        if (!creds) {
+          return html(
+            res,
+            400,
+            '<!doctype html><html><body><h3>Missing OAuth client credentials</h3><p>Enter your client id/secret in the desktop app and try again.</p></body></html>'
+          );
+        }
+
+        const tokenRes = await googleFetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            code,
+            client_id: creds.clientId,
+            client_secret: creds.clientSecret,
+            redirect_uri: pendingGmailOauth.redirectUri,
+            grant_type: 'authorization_code'
+          }).toString()
+        });
+
+        if (!tokenRes.ok) {
+          const txt = await tokenRes.text().catch(() => '');
+          pendingGmailOauth = undefined;
+          await safeAudit({
+            type: 'integrations.gmail.oauth.callback_failed',
+            actor: 'browser',
+            details: { status: tokenRes.status }
+          });
+          return html(
+            res,
+            400,
+            `<!doctype html><html><body><h3>Token exchange failed</h3><p>HTTP ${tokenRes.status}</p><pre>${txt}</pre></body></html>`
+          );
+        }
+
+        const data = (await tokenRes.json().catch(() => null)) as any;
+        const accessToken = String(data?.access_token ?? '').trim();
+        if (!accessToken) {
+          pendingGmailOauth = undefined;
+          return html(
+            res,
+            400,
+            '<!doctype html><html><body><h3>Token exchange failed</h3><p>Missing access token.</p></body></html>'
+          );
+        }
+
+        const refreshToken = data?.refresh_token ? String(data.refresh_token) : undefined;
+        const tokenType = data?.token_type ? String(data.token_type) : undefined;
+        const scope = data?.scope ? String(data.scope) : pendingGmailOauth.scope;
+        const expiresInSec = Number(data?.expires_in ?? 0);
+        const expiresAt =
+          Number.isFinite(expiresInSec) && expiresInSec > 0
+            ? new Date(Date.now() + expiresInSec * 1000).toISOString()
+            : undefined;
+
+        await stateStore.setGmailOauthTokens({
+          accessToken,
+          refreshToken,
+          scope,
+          tokenType,
+          expiresAt
+        });
+        await safeAudit({ type: 'integrations.gmail.oauth.authorized', actor: 'browser' });
+
+        pendingGmailOauth = undefined;
+
+        return html(
+          res,
+          200,
+          '<!doctype html><html><body><h3>Gmail authorized</h3><p>You can close this tab and return to the desktop app.</p></body></html>'
+        );
       }
 
       if (method === 'GET' && url.pathname === '/logs/recent') {

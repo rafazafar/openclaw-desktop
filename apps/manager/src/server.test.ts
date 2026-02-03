@@ -28,15 +28,19 @@ function createStateStoreStub(overrides?: Partial<any>) {
     setTelegramError: vi.fn(async () => undefined),
     clearTelegram: vi.fn(async () => undefined),
     getGmailOauthCredsSummary: vi.fn(async () => ({ configured: false })),
+    getGmailOauthCreds: vi.fn(async () => null),
     setGmailOauthCreds: vi.fn(async () => undefined),
     clearGmailOauthCreds: vi.fn(async () => undefined),
+    getGmailOauthTokensSummary: vi.fn(async () => ({ authorized: false })),
+    setGmailOauthTokens: vi.fn(async () => undefined),
+    clearGmailOauthTokens: vi.fn(async () => undefined),
     getPermissions: vi.fn(async () => ({ catalog: [], enabled: {} })),
     setPermission: vi.fn(async () => undefined),
     resetPermissions: vi.fn(async () => undefined),
     getConfirmBeforeSendPolicy: vi.fn(async () => ({ enabled: { telegram: true, gmail: true } })),
     setConfirmBeforeSendPolicy: vi.fn(async () => undefined),
     ...(overrides ?? {})
-  };
+  } as any;
 }
 
 function createAuditLogStub(overrides?: Partial<any>) {
@@ -370,6 +374,79 @@ describe('manager server', () => {
     });
 
     expect(res.status).toBe(400);
+
+    await close();
+  });
+
+  it('POST /integrations/gmail/oauth/start requires saved OAuth client creds', async () => {
+    const server = createManagerServer({ authToken: 'secret', stateStore: createStateStoreStub() });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/integrations/gmail/oauth/start`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe('missing_oauth_creds');
+
+    await close();
+  });
+
+  it('GET /integrations/gmail/oauth/callback exchanges code and stores tokens', async () => {
+    const setGmailOauthTokens = vi.fn(async () => undefined);
+    const googleFetch = vi.fn(async (input: any, init?: any) => {
+      expect(String(input)).toContain('oauth2.googleapis.com/token');
+      expect(init?.method).toBe('POST');
+      expect(String(init?.body ?? '')).toContain('grant_type=authorization_code');
+      return new Response(
+        JSON.stringify({
+          access_token: 'access123',
+          refresh_token: 'refresh123',
+          token_type: 'Bearer',
+          scope: 'https://www.googleapis.com/auth/gmail.readonly',
+          expires_in: 3600
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    });
+
+    const stateStore = createStateStoreStub({
+      getGmailOauthCreds: vi.fn(async () => ({ clientId: 'abc.apps.googleusercontent.com', clientSecret: 'shh' })),
+      setGmailOauthTokens
+    });
+
+    const server = createManagerServer({ authToken: 'secret', stateStore, googleFetch });
+    const { url, close } = await listen(server);
+
+    const startRes = await fetch(`${url}/integrations/gmail/oauth/start`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(startRes.status).toBe(200);
+    const startBody = await startRes.json();
+    const authUrl = new URL(String(startBody.gmail.authUrl));
+    const state = authUrl.searchParams.get('state');
+    expect(state).toBeTruthy();
+
+    const cbRes = await fetch(`${url}/integrations/gmail/oauth/callback?code=thecode&state=${encodeURIComponent(
+      String(state)
+    )}`);
+
+    expect(cbRes.status).toBe(200);
+    expect(cbRes.headers.get('content-type') ?? '').toContain('text/html');
+    expect(setGmailOauthTokens).toHaveBeenCalledTimes(1);
+    expect(setGmailOauthTokens).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: 'access123',
+        refreshToken: 'refresh123',
+        tokenType: 'Bearer',
+        scope: 'https://www.googleapis.com/auth/gmail.readonly'
+      })
+    );
 
     await close();
   });

@@ -10,6 +10,14 @@ export type AuditEventType =
   | 'integrations.telegram.connect'
   | 'integrations.telegram.connect_failed'
   | 'integrations.telegram.disconnect'
+  | 'integrations.gmail.oauthCreds.set'
+  | 'integrations.gmail.oauthCreds.set_failed'
+  | 'integrations.gmail.oauthCreds.clear'
+  | 'integrations.gmail.oauth.start'
+  | 'integrations.gmail.oauth.start_failed'
+  | 'integrations.gmail.oauth.clear'
+  | 'integrations.gmail.oauth.callback_failed'
+  | 'integrations.gmail.oauth.authorized'
   | 'permissions.set'
   | 'permissions.reset'
   | 'policies.confirmBeforeSend.set'
@@ -18,7 +26,7 @@ export type AuditEventType =
 export type AuditEvent = {
   ts: string;
   type: AuditEventType;
-  actor: 'desktop-ui' | 'unknown';
+  actor: 'desktop-ui' | 'browser' | 'unknown';
   details?: Record<string, unknown>;
 };
 

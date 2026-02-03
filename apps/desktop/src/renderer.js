@@ -16,6 +16,8 @@ const gmailClientIdEl = document.getElementById('gmail-client-id');
 const gmailClientSecretEl = document.getElementById('gmail-client-secret');
 const gmailSaveBtn = document.getElementById('gmail-save');
 const gmailClearBtn = document.getElementById('gmail-clear');
+const gmailAuthorizeBtn = document.getElementById('gmail-authorize');
+const gmailDeauthBtn = document.getElementById('gmail-deauth');
 
 const logsEl = document.getElementById('logs');
 const logsHintEl = document.getElementById('logs-hint');
@@ -46,6 +48,9 @@ let lastPolicies = null;
 
 /** @type {any | null} */
 let lastGmailOauthCreds = null;
+
+/** @type {any | null} */
+let lastGmailOauthStatus = null;
 
 function setHint(text) {
   hintEl.textContent = text;
@@ -125,6 +130,83 @@ function applyGmailOauthCredsState(oauthCreds) {
   }
 }
 
+function applyGmailOauthStatusState(oauthStatus) {
+  const authorized = Boolean(oauthStatus?.oauthTokens?.authorized);
+  const configured = Boolean(lastGmailOauthCreds?.configured);
+
+  if (authorized) {
+    gmailStateEl.textContent = 'authorized';
+    gmailAuthorizeBtn.disabled = true;
+    gmailDeauthBtn.disabled = false;
+
+    const scope = oauthStatus?.oauthTokens?.scope ? ` (${oauthStatus.oauthTokens.scope})` : '';
+    gmailHintEl.textContent = `Gmail authorized${scope}.`;
+    return;
+  }
+
+  // Not authorized
+  gmailDeauthBtn.disabled = true;
+
+  if (!configured) {
+    gmailAuthorizeBtn.disabled = true;
+    // Hint is handled by creds renderer.
+    return;
+  }
+
+  gmailAuthorizeBtn.disabled = false;
+  const redirectUri = oauthStatus?.redirectUri ? ` Redirect URI: ${oauthStatus.redirectUri}` : '';
+  gmailHintEl.textContent = `OAuth credentials saved. Click Authorize to grant Gmail read-only access.${redirectUri}`;
+}
+
+async function refreshGmailOauthStatus({ quiet = false } = {}) {
+  if (!quiet) {
+    gmailAuthorizeBtn.disabled = true;
+    gmailDeauthBtn.disabled = true;
+  }
+
+  try {
+    lastGmailOauthStatus = await window.openclaw.gmailOauthStatus();
+    applyGmailOauthStatusState(lastGmailOauthStatus?.gmail ?? null);
+  } catch {
+    lastGmailOauthStatus = null;
+    // Don't surface hard errors here; creds polling handles UX.
+  }
+}
+
+async function startGmailOauth() {
+  gmailAuthorizeBtn.disabled = true;
+  gmailHintEl.textContent = 'Opening Google authorization…';
+
+  try {
+    const data = await window.openclaw.gmailOauthStart();
+    const authUrl = data?.gmail?.authUrl;
+    if (!authUrl) throw new Error('missing_auth_url');
+    await window.openclaw.openExternal(authUrl);
+    gmailHintEl.textContent = 'Complete authorization in the browser, then return here.';
+  } catch (err) {
+    gmailHintEl.textContent = `Authorize failed: ${String(err?.message ?? err)}`;
+  } finally {
+    // Status will flip once callback is completed.
+    await refreshGmailOauthStatus({ quiet: true });
+    gmailAuthorizeBtn.disabled = false;
+  }
+}
+
+async function clearGmailOauthTokens() {
+  gmailAuthorizeBtn.disabled = true;
+  gmailDeauthBtn.disabled = true;
+  gmailHintEl.textContent = 'Clearing Gmail authorization…';
+
+  try {
+    await window.openclaw.gmailOauthClear();
+    gmailHintEl.textContent = 'Cleared.';
+  } catch (err) {
+    gmailHintEl.textContent = `Clear failed: ${String(err?.message ?? err)}`;
+  } finally {
+    await refreshGmailOauthStatus({ quiet: true });
+  }
+}
+
 async function refreshGmailOauthCreds({ quiet = false } = {}) {
   if (!quiet) {
     gmailSaveBtn.disabled = true;
@@ -136,6 +218,7 @@ async function refreshGmailOauthCreds({ quiet = false } = {}) {
     const data = await window.openclaw.gmailOauthCredsGet();
     lastGmailOauthCreds = data?.gmail?.oauthCreds ?? null;
     applyGmailOauthCredsState(lastGmailOauthCreds);
+    await refreshGmailOauthStatus({ quiet: true });
   } catch (err) {
     lastGmailOauthCreds = null;
     gmailStateEl.textContent = 'error';
@@ -601,6 +684,8 @@ telegramTokenEl.addEventListener('keydown', (e) => {
 
 gmailSaveBtn.addEventListener('click', saveGmailOauthCreds);
 gmailClearBtn.addEventListener('click', clearGmailOauthCreds);
+gmailAuthorizeBtn.addEventListener('click', startGmailOauth);
+gmailDeauthBtn.addEventListener('click', clearGmailOauthTokens);
 gmailClientSecretEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void saveGmailOauthCreds();
 });
