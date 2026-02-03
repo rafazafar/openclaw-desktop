@@ -29,7 +29,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - Implement `GET /status` returning stubbed gateway status.
   - Add local auth token plumbing (static token in dev; real token later).
 
-- [ ] **T0.3 Desktop app skeleton**
+- [x] **T0.3 Desktop app skeleton** ✅ 2026-02-04 — Chose Electron (documented in `docs/DECISIONS.md`); added a minimal window with Home UI that calls manager `GET /status` via preload bridge (On/Off stubbed until T1.1).
   - Choose framework (record decision in `docs/DECISIONS.md`).
   - Basic window with Home screen and an On/Off button wired to manager API.
 

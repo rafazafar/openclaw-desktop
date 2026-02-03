@@ -1,0 +1,25 @@
+import { contextBridge } from 'electron';
+
+const DEFAULT_MANAGER_URL = 'http://127.0.0.1:3210';
+const DEFAULT_TOKEN = 'dev-token';
+
+async function managerFetch(path, init = {}) {
+  const baseUrl = process.env.OPENCLAW_MANAGER_URL ?? DEFAULT_MANAGER_URL;
+  const token = process.env.OPENCLAW_MANAGER_TOKEN ?? DEFAULT_TOKEN;
+
+  const url = new URL(path, baseUrl);
+  const headers = new Headers(init.headers ?? {});
+  headers.set('x-openclaw-token', token);
+
+  const res = await fetch(url, { ...init, headers });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = json?.error ? String(json.error) : `http_${res.status}`;
+    throw new Error(msg);
+  }
+  return json;
+}
+
+contextBridge.exposeInMainWorld('openclaw', {
+  status: async () => managerFetch('/status')
+});

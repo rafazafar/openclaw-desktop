@@ -6,11 +6,11 @@ This file is updated by the cron job as it completes tasks.
 - Target: **M1 — Desktop manager MVP (Telegram)**
 
 ## Last completed task
-- T0.2 Manager service skeleton (TypeScript) — 2026-02-04
+- T0.3 Desktop app skeleton — 2026-02-04
 
 ## Working notes
 - Keep tasks small and commit often.
 - Prefer a runnable baseline over perfect architecture.
 
 ## Next task
-- See `implementation/TASKS.md` (cron picks top-most unchecked).
+- T1.1 Gateway process control (start/stop/restart)
