@@ -18,7 +18,7 @@ Conventions:
 Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connect Telegram, see status + basic logs.
 
 ### P0-FOUNDATION (skeleton)
-- [ ] **T0.1 Repo scaffolding (monorepo skeleton)**
+- [x] **T0.1 Repo scaffolding (monorepo skeleton)** ✅ 2026-02-04 — Added repo folders + placeholder READMEs; added root package/tooling skeleton.
   - Create folders per `docs/REPO_STRUCTURE.md`:
     - `apps/desktop/`, `apps/manager/`, `packages/core/`, `packages/integrations/`, `packages/policy/`
   - Add minimal placeholder READMEs in each folder.
