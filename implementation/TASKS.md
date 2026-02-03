@@ -24,7 +24,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - Add minimal placeholder READMEs in each folder.
   - Add root tooling skeleton (format/lint/test scripts) *without* heavy implementation.
 
-- [ ] **T0.2 Manager service skeleton (TypeScript)**
+- [x] **T0.2 Manager service skeleton (TypeScript)** ✅ 2026-02-04 — Added Node HTTP manager bound to 127.0.0.1 with `GET /status` (stubbed) + `x-openclaw-token` auth; includes a small vitest.
   - Minimal HTTP server binding to `127.0.0.1`.
   - Implement `GET /status` returning stubbed gateway status.
   - Add local auth token plumbing (static token in dev; real token later).

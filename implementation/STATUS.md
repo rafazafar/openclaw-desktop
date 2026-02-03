@@ -6,7 +6,7 @@ This file is updated by the cron job as it completes tasks.
 - Target: **M1 — Desktop manager MVP (Telegram)**
 
 ## Last completed task
-- T0.1 Repo scaffolding (monorepo skeleton) — 2026-02-04
+- T0.2 Manager service skeleton (TypeScript) — 2026-02-04
 
 ## Working notes
 - Keep tasks small and commit often.

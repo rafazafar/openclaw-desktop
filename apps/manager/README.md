@@ -1,5 +1,8 @@
-# openclaw-desktop — Manager service (skeleton)
+# @openclaw/manager
 
-This folder will contain the local manager service ("clawctl") that the desktop UI talks to over localhost.
+Local manager service for OpenClaw Desktop.
 
-Status: **skeleton only** (see `implementation/TASKS.md`).
+MVP scope (M1):
+- HTTP server bound to `127.0.0.1`
+- `GET /status` returns stubbed gateway status
+- Simple local auth token header
