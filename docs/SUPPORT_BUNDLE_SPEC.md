@@ -1,0 +1,252 @@
+# Support Bundle Spec — openclaw-desktop
+
+## Purpose
+Define what **openclaw-desktop** includes when a user exports a **Support Bundle** for troubleshooting, and the **redaction / privacy rules** that must be applied so users can safely share diagnostics.
+
+This document is **implementation-free** and normative about contents, structure, and expected user experience.
+
+---
+
+## Scope
+### In scope
+- Bundle goals and intended consumers (support, community, self-debugging).
+- Bundle composition (what files/data are included).
+- Redaction rules (what must never be included, and how to scrub).
+- Levels/modes (default vs verbose).
+- User flow (export, review, share).
+- Acceptance criteria.
+
+### Out of scope
+- Exact log formats or file paths per OS.
+- Exact compression/encryption libraries.
+- Remote upload mechanism (if any); MVP assumes local export.
+
+---
+
+## Definitions
+- **Support bundle:** A single archive (zip/tar) containing structured diagnostics.
+- **Secret:** Any value that grants access or can be used to impersonate the user/app (OAuth refresh/access tokens, API keys, bot tokens, cookies, session keys, bearer tokens).
+- **PII:** Personally identifiable information (email addresses, chat handles/ids, message content, calendar event titles, etc.).
+- **Redaction:** Replacing sensitive values with a safe placeholder while preserving debugging utility.
+- **Standard bundle:** Default bundle with strict redaction and minimal data.
+- **Verbose bundle (opt-in):** Additional logs/metadata for harder bugs, explicitly acknowledged by the user.
+
+---
+
+## Design principles
+1. **Safe by default:** Standard bundles must be safe to share publicly.
+2. **Explicit consent for extra exposure:** Verbose mode must be opt-in with clear warnings.
+3. **Deterministic structure:** Support can ask users to “open file X” reliably.
+4. **Minimize content, maximize signal:** Prefer summaries over raw data.
+5. **Never include secrets:** Secrets are excluded even in verbose mode.
+
+---
+
+## Bundle format
+### Archive
+- File type: `.zip` (recommended for cross-platform).
+- Filename: `openclaw-desktop-support-bundle_YYYY-MM-DD_HH-mm_<short-id>.zip`
+- Internal root folder: same name as the zip (no loose files).
+
+### Manifest (required)
+A `manifest.json` at the root containing:
+- bundle version (schema version)
+- created timestamp + timezone
+- app version (openclaw-desktop)
+- gateway version (OpenClaw) if available
+- OS + architecture
+- export mode: `standard | verbose`
+- redaction mode: `strict`
+- user-consented flags (what they opted into)
+- list of included files with sizes + sha256 (post-redaction)
+
+---
+
+## Required contents (Standard)
+Standard bundles include **only non-secret** diagnostics.
+
+### 1) Environment summary
+`summary.md`
+- What the user was trying to do (freeform text box during export).
+- App version, build channel (stable/beta), install type.
+- OS version, locale, timezone.
+- Process status summary:
+  - is desktop app running
+  - is gateway running
+  - last restart time (if tracked)
+- High-level integration status (connected/disconnected/needs re-auth) **without identifiers**.
+  - Example: “Gmail: connected (account redacted)”
+
+### 2) App state (sanitized)
+`app-state.redacted.json`
+- Canonical app model with:
+  - integration connection state
+  - permission toggles
+  - policy toggles (confirm-before-send on/off, allowlist enabled)
+  - update preferences
+- Must **remove or redact**:
+  - email addresses / account identifiers
+  - chat ids / channel identifiers
+  - any stored tokens (should not exist here per `CONFIG_GENERATION.md`)
+
+Recommended redactions:
+- Replace identifiers with stable per-bundle pseudonyms:
+  - `account_1`, `account_2`
+  - `chat_1`
+- Keep counts and types.
+
+### 3) Generated config (sanitized)
+`openclaw.generated.redacted.(yml|json)`
+- The generated OpenClaw config after:
+  - removing any embedded secrets (should not exist)
+  - redacting external identifiers (chat ids, emails, webhook URLs with tokens)
+
+Notes:
+- If config references keychain handles/keys, include only the handle name if it is non-sensitive.
+
+### 4) Health checks & diagnostics results
+`diagnostics.json`
+- Results of built-in checks (no network packet captures):
+  - connectivity to required endpoints (pass/fail + error code)
+  - OAuth token validity check (only boolean + error type)
+  - gateway reachable on localhost (pass/fail)
+  - plugin status (running / error)
+- Include timestamps and durations.
+
+### 5) Logs (redacted + truncated)
+`logs/`
+- `desktop.log` (or equivalent): last N hours, capped size.
+- `gateway.log` (if accessible): last N hours, capped size.
+
+Log retention and limits (normative suggestions):
+- Default include: last **24 hours** or **10 MB**, whichever smaller, per log.
+- Always strip ANSI sequences.
+
+### 6) Crash reports (if present)
+`crashes/`
+- Include the last 1–3 crash reports generated by the app.
+- Must not include memory dumps unless user explicitly opts in.
+
+---
+
+## Optional contents
+### A) Verbose mode additions (opt-in)
+Verbose mode may include:
+- Longer log window (e.g., 7 days) and larger size caps.
+- Renderer console logs (if meaningful), **still redacted**.
+- Additional diagnostic traces (timings, retry backoffs, state transitions) that do **not** include content.
+
+Verbose mode must still exclude:
+- Any secrets
+- Message bodies / email bodies
+- Full recipient lists
+
+### B) User-provided reproducer artifacts (opt-in)
+If the user attaches files manually during export:
+- Place them under `user/`.
+- Show a warning that these are not automatically redacted.
+
+---
+
+## Redaction rules (normative)
+### Never include (hard ban)
+The bundle must never include these values, even in verbose mode:
+- OAuth access tokens, refresh tokens
+- API keys, bot tokens, webhook tokens
+- Cookies, session ids, bearer tokens
+- Private keys, signing keys
+- Keychain/credential store exports
+
+### PII handling
+PII should be removed or pseudonymized in standard bundles.
+
+#### Identifiers to redact
+- email addresses
+- names (if present in logs)
+- chat ids, channel ids, phone numbers
+- calendar event ids/titles
+- IP addresses (see below)
+
+#### IP address policy
+- Standard: redact public IPs; keep private LAN subnets only if useful.
+- If IPs are needed, replace with:
+  - `public_ip_redacted`
+  - `lan_ip_1`, `lan_ip_2`
+
+### URL handling
+- Remove query strings entirely.
+- If URL contains embedded credentials/tokens in the path, replace the sensitive segment with `REDACTED`.
+
+### Log scrubbing
+Log lines must be scrubbed using:
+1. **Pattern-based redaction** (known token patterns and header keys)
+2. **Key-based redaction** for structured logs (JSON fields)
+3. **Fail-safe filters**: if a line matches “token-like” entropy heuristics, redact the suspicious substring.
+
+Minimum patterns to target (conceptual):
+- `Authorization: Bearer ...`
+- `access_token=...`, `refresh_token=...`
+- `api_key=...`
+- `bot_token=...`
+
+### Pseudonymization
+When redacting identifiers, preserve correlation by replacing the same original value with the same placeholder **within a bundle**.
+- Example: `user@gmail.com` → `account_1` everywhere.
+
+---
+
+## User experience flow
+### Entry points
+- Settings → Troubleshooting → **Export support bundle**
+- Error screens should offer a shortcut: **Export bundle**
+
+### Step-by-step
+1. User sees a short explanation:
+   - what will be included
+   - what will NOT be included (secrets)
+   - who they should share it with
+2. User selects mode:
+   - Standard (recommended)
+   - Verbose (more data; may include more metadata)
+3. User enters optional “What happened?” description.
+4. App generates bundle and shows:
+   - file path
+   - bundle size
+   - a “Reveal in Finder/Explorer” button
+5. Optional: show a quick contents preview list.
+
+### Failure behavior
+If bundle generation fails:
+- do not create partial archive silently
+- show actionable error and a link to retry
+
+---
+
+## Edge cases
+- **Gateway not running:** bundle should still export desktop app state + logs.
+- **State corrupted/unreadable:** include a minimal error report describing the parse failure; do not include raw corrupted file if it may contain PII/secrets (unless user explicitly opts in).
+- **Logs too large:** truncate deterministically (newest first), note truncation in manifest.
+- **Redaction failure:** if redaction cannot be confidently applied, default to excluding the file and record the omission in the manifest.
+- **Time skew:** record both wall-clock and monotonic durations where applicable.
+
+---
+
+## Acceptance criteria
+1. **Single-archive export:** Users can export a single archive from UI without manual file hunting.
+2. **No secrets:** Bundle contains zero secrets, verified by automated scanning (pattern checks).
+3. **Standard is safe to share:** Standard mode contains no raw message content, email content, or direct identifiers.
+4. **Useful for debugging:** Support can determine:
+   - app + gateway versions
+   - enabled integrations and permission scopes
+   - policy settings
+   - last errors and health check statuses
+5. **Deterministic structure:** Support can instruct users to open known paths (manifest/summary/diagnostics).
+6. **Clear consent:** Verbose mode requires an explicit acknowledgement.
+7. **Documented omissions:** Any excluded files are listed in the manifest with reason.
+
+---
+
+## Open questions
+- Should the bundle support optional **encryption with a passphrase** for safer sharing?
+- Should there be an option to include **gateway config overrides** (advanced mode) after applying the same redaction rules?
+- Do we need a “privacy mode” setting that further reduces even standard bundle contents (ties into `docs/SECURITY_THREAT_MODEL.md`)?

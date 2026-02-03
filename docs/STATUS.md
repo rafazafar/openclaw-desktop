@@ -42,7 +42,7 @@ These are optional but useful PRD-adjacent docs to make later implementation smo
 - ✅ CONFIG_GENERATION.md (2026-02-04) — how manager generates OpenClaw config, ownership strategy, migration approach
 - ✅ POLICY_ENFORCEMENT.md (2026-02-04) — how “hard” policies are enforced (confirm-before-send, allowlists)
 - ✅ UPDATE_STRATEGY.md (2026-02-04) — detailed update mechanisms, signing, rollback
-- ⬜ SUPPORT_BUNDLE_SPEC.md — exactly what diagnostics include + redaction rules
+- ✅ SUPPORT_BUNDLE_SPEC.md (2026-02-04) — exactly what diagnostics include + redaction rules
 
 ### Project management
 - ⬜ BACKLOG.md — prioritized issues list derived from PRD/roadmap
@@ -52,7 +52,6 @@ These are optional but useful PRD-adjacent docs to make later implementation smo
 
 ## Next task (picked up by cron)
 1) Create missing backlog docs in sensible order:
-   - SUPPORT_BUNDLE_SPEC.md
    - BACKLOG.md
    - DECISIONS.md
 2) Update this file after each doc.
