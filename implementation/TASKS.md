@@ -46,7 +46,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - Store bot token securely (dev: env/file; later: keychain).
   - Represent integration connection state in manager.
 
-- [ ] **T2.2 Telegram connect flow (UI + manager)**
+- [x] **T2.2 Telegram connect flow (UI + manager)** ✅ 2026-02-04 — Added POST `/integrations/telegram/connect` with Telegram `getMe` validation + state persistence; desktop UI can enter token and connect.
   - UI: token input + connect button.
   - Manager: validate token (basic) and persist.
 

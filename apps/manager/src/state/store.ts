@@ -37,6 +37,7 @@ export type StateStore = {
   writeState(next: AppStateV1): Promise<void>;
   getTelegramConnection(): Promise<IntegrationConnection>;
   setTelegramToken(token: string): Promise<void>;
+  setTelegramError(message: string): Promise<void>;
   clearTelegram(): Promise<void>;
 };
 
@@ -111,6 +112,7 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
 
   async function setTelegramToken(token: string): Promise<void> {
     const state = await getState();
+    const now = new Date().toISOString();
     const next: AppStateV1 = {
       ...state,
       integrations: {
@@ -118,8 +120,27 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
         telegram: {
           ...state.integrations.telegram,
           token,
-          connectedAt: state.integrations.telegram.connectedAt ?? new Date().toISOString(),
+          connectedAt: state.integrations.telegram.connectedAt ?? now,
+          lastValidatedAt: now,
           lastError: undefined
+        }
+      }
+    };
+    await writeState(next);
+  }
+
+  async function setTelegramError(message: string): Promise<void> {
+    const state = await getState();
+    const now = new Date().toISOString();
+    const next: AppStateV1 = {
+      ...state,
+      integrations: {
+        ...state.integrations,
+        telegram: {
+          ...state.integrations.telegram,
+          token: undefined,
+          lastValidatedAt: now,
+          lastError: message
         }
       }
     };
@@ -143,6 +164,7 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     writeState,
     getTelegramConnection,
     setTelegramToken,
+    setTelegramError,
     clearTelegram
   };
 }

@@ -45,7 +45,7 @@ describe('state store', () => {
       integrationId: 'telegram',
       connected: true,
       connectedAt: expect.any(String),
-      lastValidatedAt: undefined,
+      lastValidatedAt: expect.any(String),
       needsAttention: false,
       lastError: undefined
     });
@@ -64,5 +64,23 @@ describe('state store', () => {
 
     const conn = await store.getTelegramConnection();
     expect(conn.connected).toBe(false);
+  });
+
+  it('setTelegramError clears token and marks needsAttention', async () => {
+    const dir = await mkTempDir();
+    created.push(dir);
+
+    const store = createStateStore({ dataDir: dir });
+    await store.setTelegramToken('123:ABC');
+    await store.setTelegramError('bad_token');
+
+    const state = await store.getState();
+    expect(state.integrations.telegram.token).toBeUndefined();
+    expect(state.integrations.telegram.lastError).toBe('bad_token');
+
+    const conn = await store.getTelegramConnection();
+    expect(conn.connected).toBe(false);
+    expect(conn.needsAttention).toBe(true);
+    expect(conn.lastError).toBe('bad_token');
   });
 });

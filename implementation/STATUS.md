@@ -6,14 +6,14 @@ This file is updated by the cron job as it completes tasks.
 - Target: **M1 — Desktop manager MVP (Telegram)**
 
 ## Last completed task
-- T2.1 Telegram integration: data model + storage — 2026-02-04
+- T2.2 Telegram connect flow (UI + manager) — 2026-02-04
 
 ## Working notes
 - Keep tasks small and commit often.
 - Prefer a runnable baseline over perfect architecture.
 
 ## Next task
-- T2.2 Telegram connect flow (UI + manager)
+- T2.3 Telegram disconnect flow
 
 ## Notes
 - Gateway lifecycle is implemented via `openclaw gateway <cmd>`; `/status` reflects CLI status parsing and may return `error` if parsing fails.

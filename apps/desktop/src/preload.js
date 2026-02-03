@@ -24,5 +24,11 @@ contextBridge.exposeInMainWorld('openclaw', {
   status: async () => managerFetch('/status'),
   gatewayStart: async () => managerFetch('/gateway/start', { method: 'POST' }),
   gatewayStop: async () => managerFetch('/gateway/stop', { method: 'POST' }),
-  gatewayRestart: async () => managerFetch('/gateway/restart', { method: 'POST' })
+  gatewayRestart: async () => managerFetch('/gateway/restart', { method: 'POST' }),
+  telegramConnect: async (token) =>
+    managerFetch('/integrations/telegram/connect', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token })
+    })
 });

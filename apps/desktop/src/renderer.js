@@ -4,6 +4,11 @@ const rawEl = document.getElementById('raw');
 const refreshBtn = document.getElementById('refresh');
 const toggleBtn = document.getElementById('toggle');
 
+const telegramStateEl = document.getElementById('telegram-state');
+const telegramHintEl = document.getElementById('telegram-hint');
+const telegramTokenEl = document.getElementById('telegram-token');
+const telegramConnectBtn = document.getElementById('telegram-connect');
+
 /** @type {any | null} */
 let lastStatus = null;
 /** @type {ReturnType<typeof setInterval> | null} */
@@ -47,6 +52,24 @@ function applyGatewayState(gateway) {
   }
 }
 
+function applyTelegramState(telegram) {
+  const connected = Boolean(telegram?.connected);
+  telegramStateEl.textContent = connected ? 'connected' : 'not connected';
+
+  if (connected) {
+    const label = telegram?.accountLabel ? ` (${telegram.accountLabel})` : '';
+    telegramHintEl.textContent = `Telegram is connected${label}.`;
+    telegramConnectBtn.disabled = true;
+    telegramTokenEl.disabled = true;
+    telegramTokenEl.value = '';
+  } else {
+    telegramConnectBtn.disabled = false;
+    telegramTokenEl.disabled = false;
+    const err = telegram?.lastError ? `Last error: ${telegram.lastError}` : 'Connect a bot token to use Telegram as the chat surface.';
+    telegramHintEl.textContent = err;
+  }
+}
+
 async function refreshStatus({ quiet = false } = {}) {
   if (!quiet) {
     refreshBtn.disabled = true;
@@ -59,6 +82,7 @@ async function refreshStatus({ quiet = false } = {}) {
     lastStatus = data;
 
     applyGatewayState(data?.gateway);
+    applyTelegramState(data?.integrations?.telegram);
     setRaw(data);
 
     // Refresh button should always be usable.
@@ -112,8 +136,32 @@ async function toggleGateway() {
   }
 }
 
+async function connectTelegram() {
+  const token = String(telegramTokenEl.value ?? '').trim();
+  if (!token) {
+    telegramHintEl.textContent = 'Enter a bot token first.';
+    return;
+  }
+
+  telegramConnectBtn.disabled = true;
+  telegramHintEl.textContent = 'Validating token…';
+
+  try {
+    const data = await window.openclaw.telegramConnect(token);
+    lastStatus = { ...(lastStatus ?? {}), ...data };
+    await refreshStatus({ quiet: true });
+  } catch (err) {
+    telegramConnectBtn.disabled = false;
+    telegramHintEl.textContent = `Failed to connect: ${String(err?.message ?? err)}`;
+  }
+}
+
 refreshBtn.addEventListener('click', () => refreshStatus());
 toggleBtn.addEventListener('click', toggleGateway);
+telegramConnectBtn.addEventListener('click', connectTelegram);
+telegramTokenEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') void connectTelegram();
+});
 
 // Auto-load once, then poll.
 refreshStatus();

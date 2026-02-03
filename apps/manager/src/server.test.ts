@@ -38,8 +38,9 @@ describe('manager server', () => {
     const stateStore = {
       getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
       writeState: vi.fn(async () => undefined),
-      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })), 
+      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
       setTelegramToken: vi.fn(async () => undefined),
+      setTelegramError: vi.fn(async () => undefined),
       clearTelegram: vi.fn(async () => undefined)
     };
 
@@ -82,6 +83,68 @@ describe('manager server', () => {
     const body = await res.json();
     expect(body).toEqual({ ok: true, gateway: { status: 'running' } });
     expect(gateway.start).toHaveBeenCalledTimes(1);
+
+    await close();
+  });
+
+  it('POST /integrations/telegram/connect validates token and persists it', async () => {
+    const telegramFetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { username: 'my_bot' } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+
+    const stateStore = {
+      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
+      writeState: vi.fn(async () => undefined),
+      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: true })),
+      setTelegramToken: vi.fn(async () => undefined),
+      setTelegramError: vi.fn(async () => undefined),
+      clearTelegram: vi.fn(async () => undefined)
+    };
+
+    const server = createManagerServer({ authToken: 'secret', stateStore, telegramFetch });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/integrations/telegram/connect`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ token: '123456:ABCDEF_1234567890' })
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true, integrations: { telegram: { integrationId: 'telegram', connected: true } } });
+    expect(stateStore.setTelegramToken).toHaveBeenCalledTimes(1);
+    expect(telegramFetch).toHaveBeenCalledTimes(1);
+
+    await close();
+  });
+
+  it('POST /integrations/telegram/connect rejects invalid token format', async () => {
+    const stateStore = {
+      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
+      writeState: vi.fn(async () => undefined),
+      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
+      setTelegramToken: vi.fn(async () => undefined),
+      setTelegramError: vi.fn(async () => undefined),
+      clearTelegram: vi.fn(async () => undefined)
+    };
+
+    const server = createManagerServer({ authToken: 'secret', stateStore });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/integrations/telegram/connect`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret', 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'not-a-token' })
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toEqual({ ok: false, error: 'invalid_token' });
+    expect(stateStore.setTelegramError).toHaveBeenCalledTimes(1);
 
     await close();
   });
