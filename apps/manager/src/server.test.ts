@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createManagerServer } from './server.js';
 import type { GatewayController } from './gateway.js';
@@ -171,6 +174,31 @@ describe('manager server', () => {
     const body = await res.json();
     expect(body).toEqual({ ok: true, integrations: { telegram: { integrationId: 'telegram', connected: false } } });
     expect(stateStore.clearTelegram).toHaveBeenCalledTimes(1);
+
+    await close();
+  });
+
+  it('GET /logs/recent returns last N lines from the resolved log file', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'openclaw-desktop-test-'));
+    const logPath = path.join(dir, 'gateway.log');
+    await fs.writeFile(logPath, ['one', 'two', 'three'].join('\n'), 'utf8');
+
+    const server = createManagerServer({
+      authToken: 'secret',
+      logFileResolver: async () => logPath
+    });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/logs/recent?lines=2`, {
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.logs.available).toBe(true);
+    expect(body.logs.file).toBe(logPath);
+    expect(body.logs.lines).toEqual(['two', 'three']);
 
     await close();
   });

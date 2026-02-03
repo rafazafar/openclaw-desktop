@@ -156,6 +156,20 @@
       </div>
 
       <div class="card">
+        <div class="row">
+          <div>
+            <div><strong>Logs</strong></div>
+            <div class="sub" id="logs-hint">Recent gateway log lines from the local OpenClaw install.</div>
+          </div>
+          <div class="right">
+            <button id="logs-refresh">Refresh logs</button>
+            <button id="logs-copy" style="background: #fff; color: #111">Copy</button>
+          </div>
+        </div>
+        <pre id="logs" aria-label="Recent gateway logs"></pre>
+      </div>
+
+      <div class="card">
         <strong>Dev quickstart</strong>
         <pre>
 # Terminal A

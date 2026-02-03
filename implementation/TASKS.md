@@ -63,7 +63,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - Atomic write strategy (tmp + rename) per `docs/CONFIG_GENERATION.md`.
 
 ### P0-OBSERVABILITY
-- [ ] **T4.1 Basic logs surface**
+- [x] **T4.1 Basic logs surface** ✅ 2026-02-04 — Added manager `GET /logs/recent` (tails gateway log file) + desktop Logs card with refresh + copy.
   - Manager exposes recent logs path/lines.
   - Desktop shows last N lines and copy button.
 

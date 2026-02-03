@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { createGatewayController, type GatewayController, type GatewayState } from './gateway.js';
+import { resolveGatewayLogFilePath, tailFileLines } from './logs.js';
 import { createStateStore, type IntegrationConnection, type StateStore } from './state/store.js';
 
 export type ManagerStatusResponse = {
@@ -30,6 +31,17 @@ export type ManagerTelegramDisconnectResponse = {
   };
 };
 
+export type ManagerLogsRecentResponse = {
+  ok: true;
+  logs: {
+    available: boolean;
+    file?: string;
+    lines: string[];
+    truncated?: boolean;
+    error?: string;
+  };
+};
+
 export type ManagerServerOptions = {
   /** Token required in `x-openclaw-token` header. */
   authToken: string;
@@ -39,6 +51,8 @@ export type ManagerServerOptions = {
   stateStore?: StateStore;
   /** Override for tests; defaults to global fetch. */
   telegramFetch?: typeof fetch;
+  /** Override for tests; resolves the gateway log file path. */
+  logFileResolver?: () => Promise<string | null>;
 };
 
 function json(res: http.ServerResponse, statusCode: number, body: unknown): void {
@@ -178,6 +192,41 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
           }
         };
         return json(res, 200, body);
+      }
+
+      if (method === 'GET' && url.pathname === '/logs/recent') {
+        const linesParam = Number(url.searchParams.get('lines') ?? '200');
+        const linesWanted = Number.isFinite(linesParam) ? linesParam : 200;
+
+        const resolve = opts.logFileResolver ?? resolveGatewayLogFilePath;
+        const file = await resolve();
+        if (!file) {
+          const body: ManagerLogsRecentResponse = {
+            ok: true,
+            logs: { available: false, lines: [], error: 'no_log_file' }
+          };
+          return json(res, 200, body);
+        }
+
+        try {
+          const tailed = await tailFileLines(file, linesWanted);
+          const body: ManagerLogsRecentResponse = {
+            ok: true,
+            logs: { available: true, file, lines: tailed.lines, truncated: tailed.truncated }
+          };
+          return json(res, 200, body);
+        } catch (err) {
+          const body: ManagerLogsRecentResponse = {
+            ok: true,
+            logs: {
+              available: false,
+              file,
+              lines: [],
+              error: (err as Error).message || 'failed_to_read_logs'
+            }
+          };
+          return json(res, 200, body);
+        }
       }
 
       return json(res, 404, { ok: false, error: 'not_found' });

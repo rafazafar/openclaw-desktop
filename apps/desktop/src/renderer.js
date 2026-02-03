@@ -10,10 +10,19 @@ const telegramTokenEl = document.getElementById('telegram-token');
 const telegramConnectBtn = document.getElementById('telegram-connect');
 const telegramDisconnectBtn = document.getElementById('telegram-disconnect');
 
+const logsEl = document.getElementById('logs');
+const logsHintEl = document.getElementById('logs-hint');
+const logsRefreshBtn = document.getElementById('logs-refresh');
+const logsCopyBtn = document.getElementById('logs-copy');
+
 /** @type {any | null} */
 let lastStatus = null;
 /** @type {ReturnType<typeof setInterval> | null} */
 let pollTimer = null;
+/** @type {ReturnType<typeof setInterval> | null} */
+let logsTimer = null;
+
+let lastLogsText = '';
 
 function setHint(text) {
   hintEl.textContent = text;
@@ -68,8 +77,58 @@ function applyTelegramState(telegram) {
     telegramConnectBtn.disabled = false;
     telegramDisconnectBtn.disabled = true;
     telegramTokenEl.disabled = false;
-    const err = telegram?.lastError ? `Last error: ${telegram.lastError}` : 'Connect a bot token to use Telegram as the chat surface.';
+    const err = telegram?.lastError
+      ? `Last error: ${telegram.lastError}`
+      : 'Connect a bot token to use Telegram as the chat surface.';
     telegramHintEl.textContent = err;
+  }
+}
+
+async function refreshLogs({ quiet = false } = {}) {
+  if (!quiet) {
+    logsRefreshBtn.disabled = true;
+    logsHintEl.textContent = 'Loading logs…';
+  }
+
+  try {
+    const data = await window.openclaw.logsRecent(200);
+    const logs = data?.logs;
+
+    if (!logs?.available) {
+      lastLogsText = '';
+      logsEl.textContent = '';
+      const file = logs?.file ? ` (${logs.file})` : '';
+      const err = logs?.error ? `: ${logs.error}` : '';
+      logsHintEl.textContent = `Logs unavailable${file}${err}`;
+      return;
+    }
+
+    const file = logs.file ? ` — ${logs.file}` : '';
+    const trunc = logs.truncated ? ' (tail)' : '';
+    logsHintEl.textContent = `Recent gateway logs${trunc}${file}`;
+
+    lastLogsText = Array.isArray(logs.lines) ? logs.lines.join('\n') : '';
+    logsEl.textContent = lastLogsText;
+  } catch (err) {
+    lastLogsText = '';
+    logsEl.textContent = '';
+    logsHintEl.textContent = `Failed to load logs: ${String(err?.message ?? err)}`;
+  } finally {
+    logsRefreshBtn.disabled = false;
+  }
+}
+
+async function copyLogs() {
+  if (!lastLogsText) {
+    logsHintEl.textContent = 'No logs to copy.';
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(lastLogsText);
+    logsHintEl.textContent = 'Copied logs to clipboard.';
+  } catch (err) {
+    logsHintEl.textContent = `Copy failed: ${String(err?.message ?? err)}`;
   }
 }
 
@@ -185,6 +244,12 @@ telegramTokenEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') void connectTelegram();
 });
 
+logsRefreshBtn.addEventListener('click', () => refreshLogs());
+logsCopyBtn.addEventListener('click', copyLogs);
+
 // Auto-load once, then poll.
 refreshStatus();
+refreshLogs({ quiet: true });
+
 pollTimer = setInterval(() => refreshStatus({ quiet: true }), 2000);
+logsTimer = setInterval(() => refreshLogs({ quiet: true }), 5000);
