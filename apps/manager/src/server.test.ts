@@ -202,4 +202,44 @@ describe('manager server', () => {
 
     await close();
   });
+
+  it('POST /diagnostics/run returns a checklist summary', async () => {
+    const gateway: GatewayController = {
+      status: vi.fn(async () => ({ status: 'running' as const })),
+      start: vi.fn(async () => ({ status: 'running' as const })),
+      stop: vi.fn(async () => ({ status: 'stopped' as const })),
+      restart: vi.fn(async () => ({ status: 'running' as const }))
+    };
+
+    const stateStore = {
+      getState: vi.fn(async () => ({ schemaVersion: 1 as const, integrations: { telegram: {} } })),
+      writeState: vi.fn(async () => undefined),
+      getTelegramConnection: vi.fn(async () => ({ integrationId: 'telegram' as const, connected: false })),
+      setTelegramToken: vi.fn(async () => undefined),
+      setTelegramError: vi.fn(async () => undefined),
+      clearTelegram: vi.fn(async () => undefined)
+    };
+
+    const server = createManagerServer({
+      authToken: 'secret',
+      gateway,
+      stateStore,
+      logFileResolver: async () => null
+    });
+    const { url, close } = await listen(server);
+
+    const res = await fetch(`${url}/diagnostics/run`, {
+      method: 'POST',
+      headers: { 'x-openclaw-token': 'secret' }
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.summary.overall).toBe('warn');
+    expect(Array.isArray(body.checks)).toBe(true);
+    expect(body.checks.some((c: any) => c.id === 'gateway.status')).toBe(true);
+
+    await close();
+  });
 });

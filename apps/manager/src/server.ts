@@ -2,6 +2,7 @@ import http from 'node:http';
 import { URL } from 'node:url';
 import { createGatewayController, type GatewayController, type GatewayState } from './gateway.js';
 import { resolveGatewayLogFilePath, tailFileLines } from './logs.js';
+import { runDiagnostics, type DiagnosticsRunResult } from './diagnostics.js';
 import { createStateStore, type IntegrationConnection, type StateStore } from './state/store.js';
 
 export type ManagerStatusResponse = {
@@ -41,6 +42,8 @@ export type ManagerLogsRecentResponse = {
     error?: string;
   };
 };
+
+export type ManagerDiagnosticsRunResponse = DiagnosticsRunResult;
 
 export type ManagerServerOptions = {
   /** Token required in `x-openclaw-token` header. */
@@ -227,6 +230,16 @@ export function createManagerServer(opts: ManagerServerOptions): http.Server {
           };
           return json(res, 200, body);
         }
+      }
+
+      if (method === 'POST' && url.pathname === '/diagnostics/run') {
+        const resolver = opts.logFileResolver ?? resolveGatewayLogFilePath;
+        const body: ManagerDiagnosticsRunResponse = await runDiagnostics({
+          gateway,
+          stateStore,
+          logFileResolver: resolver
+        });
+        return json(res, 200, body);
       }
 
       return json(res, 404, { ok: false, error: 'not_found' });

@@ -6,14 +6,14 @@ This file is updated by the cron job as it completes tasks.
 - Target: **M1 — Desktop manager MVP (Telegram)**
 
 ## Last completed task
-- T4.1 Basic logs surface — 2026-02-04
+- T4.2 Diagnostics checklist (minimal) — 2026-02-04
 
 ## Working notes
 - Keep tasks small and commit often.
 - Prefer a runnable baseline over perfect architecture.
 
 ## Next task
-- T4.2 Diagnostics checklist (minimal)
+- M2 — Permissions framework: T5.1 Permission catalog v1
 
 ## Notes
 - Gateway lifecycle is implemented via `openclaw gateway <cmd>`; `/status` reflects CLI status parsing and may return `error` if parsing fails.

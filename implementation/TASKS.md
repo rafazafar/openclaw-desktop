@@ -67,7 +67,7 @@ Goal: user can install/run the desktop app, turn OpenClaw gateway On/Off, connec
   - Manager exposes recent logs path/lines.
   - Desktop shows last N lines and copy button.
 
-- [ ] **T4.2 Diagnostics checklist (minimal)**
+- [x] **T4.2 Diagnostics checklist (minimal)** ✅ 2026-02-04 — Added POST `/diagnostics/run` returning a small checklist (gateway status, state store, logs, telegram) + vitest.
   - Implement `/diagnostics/run` returning a few checks.
 
 ---
