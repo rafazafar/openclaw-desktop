@@ -17,6 +17,7 @@ This file is updated by the cron job as it completes tasks.
 
 ## Completion
 - All tasks complete
+- Cron job disabled — 2026-02-04
 
 ## Notes
 - Gateway lifecycle is implemented via `openclaw gateway <cmd>`; `/status` reflects CLI status parsing and may return `error` if parsing fails.
