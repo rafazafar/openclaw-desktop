@@ -34,7 +34,7 @@ This file is used by the recurring cron job to continue planning work without lo
 These are optional but useful PRD-adjacent docs to make later implementation smoother.
 
 ### Product / UX
-- ⬜ ONBOARDING_COPY.md — exact user-facing text for flows (first run, connect Gmail, permissions warnings)
+- ✅ ONBOARDING_COPY.md (2026-02-04) — exact user-facing text for flows (first run, connect Gmail, permissions warnings)
 - ⬜ UX_EDGE_CASES.md — edge cases + error states (invalid token, revoked OAuth, network blocked)
 - ⬜ ACCESSIBILITY.md — basic a11y requirements
 
@@ -52,7 +52,6 @@ These are optional but useful PRD-adjacent docs to make later implementation smo
 
 ## Next task (picked up by cron)
 1) Create missing backlog docs in sensible order:
-   - ONBOARDING_COPY.md
    - UX_EDGE_CASES.md
    - CONFIG_GENERATION.md
    - POLICY_ENFORCEMENT.md
