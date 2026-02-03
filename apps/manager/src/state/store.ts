@@ -2,6 +2,84 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
+/**
+ * Best-effort atomic write with single-file rollback.
+ *
+ * Strategy:
+ * 1) write `tmp` in same directory
+ * 2) fsync
+ * 3) rename current → .bak (if present)
+ * 4) rename tmp → target
+ *
+ * On Windows, renaming over an existing path is not reliable, so we always
+ * move the previous file out of the way first.
+ */
+async function atomicWriteFileWithBackup(targetPath: string, contents: string): Promise<void> {
+  const dir = path.dirname(targetPath);
+  const tmpPath = path.join(
+    dir,
+    `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`
+  );
+  const bakPath = `${targetPath}.bak`;
+
+  // 1) Write temp
+  await fs.writeFile(tmpPath, contents, 'utf8');
+
+  // 2) Flush temp to disk (best-effort)
+  const handle = await fs.open(tmpPath, 'r+');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+
+  const hadTarget = await pathExists(targetPath);
+
+  try {
+    // 3) Move existing to backup (single rollback point)
+    if (hadTarget) {
+      if (await pathExists(bakPath)) {
+        await fs.rm(bakPath, { force: true });
+      }
+      await fs.rename(targetPath, bakPath);
+    }
+
+    // 4) Put new file in place
+    await fs.rename(tmpPath, targetPath);
+  } catch (err) {
+    // Roll back if we already moved the old file away.
+    try {
+      const hasTargetNow = await pathExists(targetPath);
+      const hasBakNow = await pathExists(bakPath);
+      if (!hasTargetNow && hasBakNow) {
+        await fs.rename(bakPath, targetPath);
+      }
+    } catch {
+      // ignore rollback errors; original error will be thrown
+    }
+
+    // Cleanup tmp (may already be moved)
+    try {
+      await fs.rm(tmpPath, { force: true });
+    } catch {
+      // ignore
+    }
+
+    throw err;
+  }
+}
+
 export type IntegrationConnection = {
   integrationId: 'telegram';
   connected: boolean;
@@ -93,8 +171,10 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
 
   async function writeState(next: AppStateV1): Promise<void> {
     await ensureDir();
-    // Not atomic yet (see T3.2). Keep simple for MVP.
-    await fs.writeFile(statePath, JSON.stringify(next, null, 2) + '\n', 'utf8');
+    await atomicWriteFileWithBackup(
+      statePath,
+      JSON.stringify(next, null, 2) + '\n'
+    );
   }
 
   async function writeGeneratedOpenClawConfig(next: AppStateV1): Promise<void> {
@@ -118,7 +198,10 @@ export function createStateStore(opts?: { dataDir?: string }): StateStore {
     };
 
     const outPath = path.join(dataDir, 'openclaw.generated.json');
-    await fs.writeFile(outPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+    await atomicWriteFileWithBackup(
+      outPath,
+      JSON.stringify(config, null, 2) + '\n'
+    );
   }
 
   async function getTelegramConnection(): Promise<IntegrationConnection> {
